@@ -73,6 +73,38 @@ for (const m of src.matchAll(/\bid\s*=\s*"([\w-]+)"[^>]*>\s*([^<]{1,16}?)\s*</g)
 if (suspicious.length) suspicious.forEach(x => fail(`#${x.id} 写死着「${x.text}」，JS 从未更新它`));
 else pass("没有发现写死且永不更新的数字");
 
+/* ---------- 3b. 写死的进度条（style="width:NN%" 但 JS 从不更新）---------- */
+console.log("\n=== 3b. 有没有写死的进度条 ===");
+const fakeBars = [];
+for (const m of src.matchAll(/\bid\s*=\s*"([\w-]+)"[^>]*style\s*=\s*"[^"]*width:\s*(\d+)%/g)) {
+  const [, id, w] = m;
+  if (grabbed.has(id)) continue;                 // JS 用字面量抓过
+  // 也认动态拼接：getElementById("prog-" + cat) 这种
+  const prefix = id.replace(/[^a-z-]*$/i, "");
+  if (prefix.length > 3 && new RegExp('getElementById\\(\\s*["\'`]' + prefix).test(js)) continue;
+  if (w === "0" || w === "100") continue;        // 0/100 多半是占位或满格
+  fakeBars.push({ id, w });
+}
+if (fakeBars.length) fakeBars.forEach(x => fail(`#${x.id} 的进度条写死在 ${x.w}%，JS 从未更新它`));
+else pass("没有发现写死的进度条");
+
+/* ---------- 3c. 界面承诺的快捷键是否真的有人监听 ---------- */
+console.log("\n=== 3c. 界面写的快捷键是否真的实现了 ===");
+const promised = new Set();
+for (const m of html.matchAll(/\[([A-Za-z]|Alt\+[A-Za-z]|Esc|Shift\+[A-Za-z])\]/g)) promised.add(m[1]);
+const hasKeydown = /addEventListener\(\s*["']keydown["']/.test(js);
+if (!promised.size) pass("界面没有承诺快捷键");
+else if (!hasKeydown) fail(`界面写着快捷键 ${[...promised].join(" / ")}，但全文件没有任何 keydown 监听`);
+else {
+  const unhandled = [...promised].filter(k => {
+    if (k.startsWith("Alt+")) return !new RegExp("altKey").test(js);
+    if (k === "Esc") return !/["']Escape["']/.test(js);
+    return !new RegExp(`["']${k}["']|toUpperCase\\(\\)`, "i").test(js);
+  });
+  if (unhandled.length) fail(`界面承诺了 ${unhandled.join(" / ")} 快捷键，但 JS 里找不到对应处理`);
+  else pass(`${promised.size} 个承诺的快捷键都有处理`);
+}
+
 /* ---------- 4. 视图白名单与真实 section 一致 ---------- */
 console.log("\n=== 4. switchView 能到的视图是否都存在 ===");
 const views = [...src.matchAll(/id="view-([\w-]+)"/g)].map(m => m[1]);

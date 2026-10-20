@@ -146,7 +146,7 @@
           </div>
           <!-- 底部进度条 -->
           <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-            <div class="bg-[#b97762] h-full rounded-full" id="prog-vocab" style="width: 15%"></div>
+            <div class="bg-[#b97762] h-full rounded-full" id="prog-vocab" style="width: 0%"></div>
           </div>
           <div class="text-[10px] text-slate-400 mt-1.5 flex justify-between">
             <span>点击展开考点细分</span>
@@ -165,7 +165,7 @@
             <span class="text-[#144e4b] font-bold text-base num" id="cnt-reading">765</span>
           </div>
           <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-            <div class="bg-[#b97762] h-full rounded-full" id="prog-reading" style="width: 25%"></div>
+            <div class="bg-[#b97762] h-full rounded-full" id="prog-reading" style="width: 0%"></div>
           </div>
           <div class="text-[10px] text-slate-400 mt-1.5 flex justify-between">
             <span>点击展开考点细分</span>
@@ -184,7 +184,7 @@
             <span class="text-[#144e4b] font-bold text-base num" id="cnt-grammar">819</span>
           </div>
           <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-            <div class="bg-[#8892a4] h-full rounded-full" id="prog-grammar" style="width: 20%"></div>
+            <div class="bg-[#8892a4] h-full rounded-full" id="prog-grammar" style="width: 0%"></div>
           </div>
           <div class="text-[10px] text-slate-400 mt-1.5 flex justify-between">
             <span>点击展开考点细分</span>
@@ -203,7 +203,7 @@
             <span class="text-[#144e4b] font-bold text-base num" id="cnt-math">1466</span>
           </div>
           <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-            <div class="bg-[#8b9a76] h-full rounded-full" id="prog-math" style="width: 30%"></div>
+            <div class="bg-[#8b9a76] h-full rounded-full" id="prog-math" style="width: 0%"></div>
           </div>
           <div class="text-[10px] text-slate-400 mt-1.5 flex justify-between">
             <span>点击展开考点细分</span>
@@ -222,7 +222,7 @@
             <span class="text-[#144e4b] font-bold text-base num" id="cnt-custom">0</span>
           </div>
           <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-            <div class="bg-[#a69a83] h-full rounded-full" id="prog-custom" style="width: 10%"></div>
+            <div class="bg-[#a69a83] h-full rounded-full" id="prog-custom" style="width: 0%"></div>
           </div>
           <div class="text-[10px] text-slate-400 mt-1.5 flex justify-between">
             <span>错题与难点标记</span>
@@ -314,14 +314,14 @@
     <section id="view-mock" class="view-panel hidden max-w-7xl mx-auto px-4 py-8 w-full">
       <div class="pb-6 border-b border-slate-200">
         <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Digital SAT 全真模考</h1>
-        <p class="text-xs sm:text-sm text-slate-500 mt-1">两阶段自适应路由，完整 54 题 R&W + 44 题 Math，支持休息与断点防丢失。</p>
+        <p class="text-xs sm:text-sm text-slate-500 mt-1">完整 54 题 R&W + 44 题 Math，按官方题数和总时长。中途刷新可恢复进度。</p>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
         <div class="bg-white p-6 rounded-xl border border-slate-200 flex flex-col justify-between">
           <div>
             <div class="text-xs font-bold text-[#144e4b] uppercase mb-1">Standard Full Test</div>
             <h2 class="text-lg font-bold text-slate-900">完整自适应全真模考</h2>
-            <p class="text-xs text-slate-500 mt-2 leading-relaxed">2 个 Section 共 4 个 Module，中间含 10 分钟中场休息。支持 Desmos 原生作图计算器。</p>
+            <p class="text-xs text-slate-500 mt-2 leading-relaxed">按官方题数和总时长出一套完整卷（R&W 64 分钟 + Math 70 分钟）。<b class="text-amber-700">暂不支持官方的 4 模块分段、中场休息和两阶段自适应路由</b>—— 那需要官方校准过的题目参数，这里给不出来，所以不假装有。</p>
           </div>
           <button onclick="startMock('full')" class="mt-6 py-2.5 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-xs font-bold transition">
             开始完整模考
@@ -521,7 +521,7 @@
                AI 拆解、同构变式题、官方解析全部挪到交卷后的复盘页 ——
                做题过程中随手就能看答案，练习就没有意义了。 -->
           <div class="pt-4 border-t border-slate-100 flex justify-between items-center text-xs">
-            <span class="text-slate-400 font-mono">快捷键: [A/B/C/D] 选择 · [Alt+F] 标记 · [Esc] 暂停</span>
+            <span class="text-slate-400 font-mono">快捷键: [A/B/C/D] 选择 · [←/→] 翻题 · [Alt+F] 标记 · [Esc] 暂停</span>
             <button onclick="togglePause()" id="btn-pause"
                     class="px-3 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded font-semibold transition">
               <i class="fa-solid fa-pause mr-1"></i>暂停
@@ -1303,6 +1303,26 @@
       return 'custom';
     }
 
+    /* 各专项进度条 = 该专项的真实正确率。没做过就是 0，不编数字。 */
+    function updateCategoryProgress() {
+      const acc = {};
+      (attempts || []).forEach(a => {
+        if (!a || !a.cat) return;
+        const t = acc[a.cat] = acc[a.cat] || { n: 0, ok: 0 };
+        t.n++; if (a.ok) t.ok++;
+      });
+      ["vocab", "reading", "grammar", "math", "custom"].forEach(cat => {
+        const el = document.getElementById("prog-" + cat);
+        if (!el) return;
+        const t = acc[cat];
+        const pct = t && t.n ? Math.round(t.ok / t.n * 100) : 0;
+        el.style.width = pct + "%";
+        const lab = document.getElementById("progtxt-" + cat);
+        if (lab) lab.textContent = t && t.n ? `${t.ok}/${t.n} · ${pct}%` : "还没做过";
+        el.title = t && t.n ? `正确率 ${pct}%（${t.ok}/${t.n}）` : "还没做过这个专项";
+      });
+    }
+
     function initBank() {
       BYID = {};
       const counts = { vocab: 0, reading: 0, grammar: 0, math: 0, custom: 0 };
@@ -1320,6 +1340,11 @@
       document.getElementById('cnt-reading').innerText = counts.reading;
       document.getElementById('cnt-grammar').innerText = counts.grammar;
       document.getElementById('cnt-math').innerText = counts.math;
+
+      // 进度条：按这个专项的真实正确率画。
+      // 原来 5 条全是写死的 15/25/20/30/10%，不管你做没做题都那样 ——
+      // 和水平评估页那个「预测总分 1420」是同一类假数据。
+      updateCategoryProgress();
       document.getElementById('cnt-custom').innerText = counts.custom;
 
       document.getElementById('header-done-count').innerText = attempts.length;
@@ -1751,7 +1776,8 @@
         say(`<span class="text-emerald-700 font-semibold"><i class="fa-solid fa-circle-check mr-1"></i>已合并：新增 ${addedAtt} 条作答、${addedVoc} 个生词</span>`);
         renderBackupStats();
         if (typeof initBank === "function") initBank();
-        if (typeof renderReport === "function" && view === "report") renderReport();
+        if (typeof renderReport === "function" &&
+            !document.getElementById("view-report").classList.contains("hidden")) renderReport();
       };
       rd.readAsText(f);
     }
@@ -1780,6 +1806,36 @@
       return String(x == null ? "" : x).replace(/[&<>"']/g,
         c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
+
+    /* 界面底部一直写着「[A/B/C/D] 选择 · [Alt+F] 标记 · [Esc] 暂停」，
+       但在这之前全文件只有一个 Esc 监听 —— 另外两个是写在那里骗人的。 */
+    document.addEventListener("keydown", (e) => {
+      const runner = document.getElementById('view-runner');
+      if (!runner || runner.classList.contains('hidden')) return;
+      if (!activeSession || paused) return;
+      // 正在输入框里打字（填空题）就别抢键
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target && e.target.isContentEditable)) return;
+
+      // Alt+F 标记本题
+      if (e.altKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        if (typeof toggleRunnerFlag === "function") toggleRunnerFlag();
+        return;
+      }
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+      // A/B/C/D 选答案（只对选择题）
+      const q = activeSession.questions[activeSession.currentIndex];
+      if (q && q.ty !== "spr" && /^[a-dA-D]$/.test(e.key)) {
+        e.preventDefault();
+        selectOption(e.key.toUpperCase());
+        return;
+      }
+      // 左右方向键翻题
+      if (e.key === "ArrowRight") { e.preventDefault(); nextQuestion(); return; }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); prevQuestion(); return; }
+    });
 
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
@@ -1865,13 +1921,15 @@
         sid,
         ts: Date.now(),
         ok: okCount,
+        skipped: (session.answers || []).filter(a => a.picked == null || String(a.picked).trim() === "").length,
         items: session.questions.map((q, i) => {
           const a = session.answers[i] || {};
-          const right = a.picked != null && a.picked !== "" && q.an && q.an.length
+          const answered = a.picked != null && String(a.picked).trim() !== "";
+          const right = answered && q.an && q.an.length
             ? (q.ty === "spr" ? sprMatch(a.picked, q.an) : q.an.includes(a.picked))
             : false;
           return {
-            q, i,
+            q, i, answered,
             picked: a.picked, ok: right, ms: a.ms || 0,
             tag: (mistakes[q.id] && mistakes[q.id].tag) || "",
             detail: (mistakes[q.id] && mistakes[q.id].detail) || "",
@@ -1901,7 +1959,9 @@
       if (!box || !debriefData) return;
       const d = debriefData;
       const n = d.items.length;
-      const pct = n ? Math.round(d.ok / n * 100) : 0;
+      const done = n - (d.skipped || 0);
+      // 正确率按「做了的题」算，没做的单独列 —— 空着不填不该拉低正确率
+      const pct = done ? Math.round(d.ok / done * 100) : 0;
       const totalMs = d.items.reduce((t, x) => t + x.ms, 0);
       document.getElementById("debrief-label").textContent =
         d.label + " · " + new Date(d.ts).toLocaleString();
@@ -1941,8 +2001,8 @@
 
       box.innerHTML = `
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          ${stat(d.ok + " / " + n, "答对")}
-          ${stat(pct + "%", "正确率")}
+          ${stat(d.ok + " / " + done, "答对")}
+          ${stat(pct + "%", d.skipped ? `正确率（${d.skipped} 题未作答不计入）` : "正确率")}
           ${stat(fmtSec(totalMs), "总用时")}
           ${stat(n ? fmtSec(totalMs / n) : "—", "平均每题")}
         </div>
@@ -1970,7 +2030,9 @@
 
     function renderDebriefItem(x) {
       const q = x.q, no = x.i + 1;
-      const badge = x.ok
+      const badge = !x.answered
+        ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">未作答</span>'
+        : x.ok
         ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">对</span>'
         : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-bold">错</span>';
       const marks = (x.highlighted ? '<span class="text-[10px] text-amber-600 ml-1" title="这题画过高亮"><i class="fa-solid fa-highlighter"></i></span>' : "")
@@ -2188,7 +2250,7 @@
         const rwPool = BANK.filter(q => q.sec === 1).sort(() => Math.random() - 0.5).slice(0, 54);
         const mathPool = BANK.filter(q => q.sec === 2).sort(() => Math.random() - 0.5).slice(0, 44);
         pool = rwPool.concat(mathPool);
-        title = "SAT 完整全真模考 (自适应)";
+        title = "SAT 完整模考";
         tag = "R&W + Math · 98 题";
         count = pool.length;
         limitSec = (64 + 70) * 60;
@@ -2865,12 +2927,18 @@
       }
 
       let okCount = 0;
+      let skipped = 0;
       const sid = activeSession.sid || ("s_" + Date.now().toString(36));
 
       activeSession.questions.forEach((q, i) => {
         const a = activeSession.answers[i];
+        // 未作答 ≠ 做错。以前空着不填也会写进错题本、打上「概念漏洞」，
+        // 正确率被拉低，错题本里塞满根本没看过的题。
+        const answered = a.picked !== null && a.picked !== undefined && String(a.picked).trim() !== "";
+        if (!answered) { skipped++; return; }
+
         let isRight = false;
-        if (a.picked !== null && a.picked !== "" && q.an && q.an.length) {
+        if (q.an && q.an.length) {
           if (q.ty === "spr") {
             isRight = sprMatch(a.picked, q.an);
           } else {
