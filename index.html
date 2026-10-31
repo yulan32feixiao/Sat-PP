@@ -2480,7 +2480,8 @@
       });
     }
     function launchCoachDrill(cat, sk, n) {
-      let pool = drillPool().filter(q => q.cat === cat);
+      let pool = drillPool();
+      if (cat) pool = pool.filter(q => q.cat === cat);
       if (sk) pool = pool.filter(q => q.sk === sk);
       if (!pool.length) return alert("该考点在当前题库来源里暂无题目，切个题库来源试试。");
       const chosen = [...pool].sort(() => Math.random() - 0.5).slice(0, n || 10);
@@ -2497,12 +2498,14 @@
       });
     }
     function startCoachTask(key) {
-      markTaskDone(key);
       const plan = coachTodayPlan(coachAggregate(attempts, mistakes), coachPrefs());
       const t = plan.tasks.find(x => x.key === key);
       if (!t) return;
+      const before = activeSession;
       if (t.type === "redo") launchCoachRedo(t.n);
       else launchCoachDrill(t.cat, t.sk, t.n);
+      if (activeSession && activeSession !== before) markTaskDone(key);   // 真开练才打勾
+      else renderCoach();
     }
     function renderCoach() {
       const prefs = coachPrefs();
