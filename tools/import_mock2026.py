@@ -17,7 +17,10 @@ import pymupdf
 
 SRC = "/Users/feixiao/Desktop/SAT dl/更新到26年10月SAT最新真题题库+答案"
 OUT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # sat/
-FIG_DIR = os.path.join(OUT_DIR, "fig2026")
+YEAR = os.environ.get("IMPORT_YEAR", "2026")
+FIG_DIR = os.environ.get("IMPORT_FIGDIR", os.path.join(OUT_DIR, "fig2026"))
+BIN_OUT = os.environ.get("IMPORT_BIN", os.path.join(OUT_DIR, "mock2026.bin"))
+PREFIX_ID = os.environ.get("IMPORT_PREFIX", "m26")
 
 RW_DIR = os.path.join(SRC, "阅读文法")
 MA_DIR = os.path.join(SRC, "数学")
@@ -317,7 +320,7 @@ def build_questions(questions, doc, set_id, sec, stats):
 
     for q in questions:
         mod = q["mod"]
-        qid = "m26.%s.%s%d.%d" % (set_id, "rw" if sec == 1 else "ma", mod, q["num"])
+        qid = PREFIX_ID + ".%s.%s%d.%d" % (set_id, "rw" if sec == 1 else "ma", mod, q["num"])
         for k, f in enumerate(q["figs"]):
             f["_qid"] = "%s_%d" % (qid, k)
 
@@ -407,15 +410,27 @@ def build_questions(questions, doc, set_id, sec, stats):
 
 
 MONTH_ORDER = {"10": 10, "9": 9, "8": 8, "6": 6, "5": 5, "3": 3}
+FALLBACK_SEQ = {}
 
 
 def set_meta(fname, sec):
     """文件名 -> setId / 排序键 / 标题 / 备注。"""
     base = os.path.splitext(fname)[0]
-    m = re.search(r"2026年(\d+)月(?:亚太|北美)?第(\d+)套", base)
-    month, nth = m.group(1), m.group(2)
+    m = re.search(YEAR + r"年(\d+)月(?:亚太|北美)?第(\d+)套", base)
+    if not m:
+        # 无"第N套"的文件名（去重合集等），用月份+文件序号兜底，避免同月多份撞ID
+        m2 = re.search(YEAR + r"年(\d+)月", base)
+        if not m2:
+            return None
+        month = m2.group(1)
+        FALLBACK_SEQ[month] = FALLBACK_SEQ.get(month, 0) + 1
+        nth = "99"
+    else:
+        month, nth = m.group(1), m.group(2)
     region = "ap" if "亚太" in base else ("na" if "北美" in base else "--")
-    sid = "2026%s-%s%s" % (month, nth, "" if region == "--" else "-" + region)
+    sid = YEAR + "%s-%s%s" % (month, nth, "" if region == "--" else "-" + region)
+    if nth == "99":
+        sid += "-f" + str(FALLBACK_SEQ[month])   # 同月多份合集的区分序号
     if "Easy" in base or "easy" in base:
         sid += "-easy"   # M2-Easy 卷与同场主卷的题目 ID 会撞，必须区分
     note = ""
@@ -436,11 +451,15 @@ def main():
     problems = []
     for sec, folder in [(1, RW_DIR), (2, MA_DIR)]:
         for fname in sorted(os.listdir(folder)):
-            if not fname.startswith("2026") or not fname.endswith(".pdf"):
+            if not fname.startswith(YEAR) or not fname.endswith(".pdf"):
                 continue
             if "纯题目" in fname:
                 continue
-            sid, order, title, note, region = set_meta(fname, sec)
+            meta = set_meta(fname, sec)
+            if meta is None:
+                problems.append(f"{fname}: 文件名无法识别年份/场次，跳过")
+                continue
+            sid, order, title, note, region = meta
             path = os.path.join(folder, fname)
             try:
                 raw, doc = parse_pdf(path, sec)
@@ -479,14 +498,14 @@ def main():
         "sets": sorted(sets, key=lambda s: (-s["month"], -s["nth"], s["sec"])),
         "questions": all_q,
         "meta": {
-            "source": "第三方考后回忆重排版（留学考试资料库），2026-10-31 审查导入",
+            "source": f"第三方考后回忆重排版（留学考试资料库），{YEAR}年卷 {YEAR}-导入",
             "answerProvenance": "答案与中文解析为题库编纂方提供，非 College Board 官方答案键",
             "importedAt": "2026-10-31",
         },
     }
     js = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()
     gz = gzip.compress(js, 9)
-    out = os.path.join(OUT_DIR, "mock2026.bin")
+    out = BIN_OUT
     open(out, "wb").write(gz)
     print("\nsets=%d questions=%d  json=%.1fMB -> mock2026.bin=%.2fMB"
           % (len(sets), len(all_q), len(js) / 1e6, len(gz) / 1e6))
