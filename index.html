@@ -2482,8 +2482,18 @@
     function launchCoachDrill(cat, sk, n) {
       let pool = drillPool();
       if (cat) pool = pool.filter(q => q.cat === cat);
-      if (sk) pool = pool.filter(q => q.sk === sk);
-      if (!pool.length) return alert("该考点在当前题库来源里暂无题目，切个题库来源试试。");
+      if (sk) {
+        const bySk = pool.filter(q => q.sk === sk);
+        if (!bySk.length) {
+          // AI给的考点名可能与题库标签不一致 → 退化到专项级（cat）练习，保证按钮永远可用
+          pool = cat ? pool.filter(q => q.cat === cat) : pool;
+          if (!pool.length) return alert("该考点在当前题库来源里暂无题目，切个题库来源试试。");
+          sk = null;
+        } else {
+          pool = bySk;
+        }
+      }
+      if (!pool.length) return alert("当前筛选条件下暂无题目。");
       const chosen = [...pool].sort(() => Math.random() - 0.5).slice(0, n || 10);
       const limitSec = selectedTimeMode === "none" ? 0 :
         chosen.reduce((s, q) => s + (q.sec === 2 ? 95 : 71), 0);
