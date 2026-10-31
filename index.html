@@ -1834,32 +1834,74 @@
       const box = document.getElementById('mock2026-list');
       if (!box) return;
       if (!MOCK) return;   // 还没载入，状态字由 loadMock2026 维护
-      const allSets = (MOCK ? MOCK.sets : []).concat(M25 ? M25.sets : []);
-      const byMonth = {};
-      allSets.forEach(s => {
-        const yr = s.id.startsWith("m26") || (!s.setId.startsWith("2025")) ? "2026" : "2025";
-        const k = yr + "|" + `${s.month}-${s.nth}`;
-        (byMonth[k] = byMonth[k] || []).push(s);
+      var allSets = (MOCK ? MOCK.sets : []).concat(M25 ? M25.sets : []);
+      var byYear = {};
+      var byMonth = {};
+      allSets.forEach(function(s){
+        var yr = String(s.setId).indexOf("2025") === 0 ? "2025" : "2026";
+        byYear[yr] = (byYear[yr] || 0) + 1;
+        var k = yr + "|" + s.month + "-" + s.nth;
+        byMonth[k] = (byMonth[k] || []).concat([s]);
       });
-      const keys = Object.keys(byMonth).sort((a, b) => {
-        const [ya, ra] = a.split("|"), [yb, rb] = b.split("|");
-        const [ma, na] = ra.split('-').map(Number), [mb, nb] = rb.split('-').map(Number);
-        return yb - ya || mb - ma || na - nb;   // 年→月都新的在前
+      window.__mockByMonth = byMonth;
+      var keys = Object.keys(byMonth).sort(function(a, b){
+        var ya = a.split("|")[0], ra = a.split("|")[1];
+        var yb = b.split("|")[0], rb = b.split("|")[1];
+        var ma = +ra.split('-')[0], na = +ra.split('-')[1];
+        var mb = +rb.split('-')[0], nb = +rb.split('-')[1];
+        return (+yb) - (+ya) || mb - ma || na - nb;   // 年→月新的在前，套号升序
       });
-      box.innerHTML = keys.map((k, i) => {
-        const [yr, rest] = k.split("|");
-        const [mo, nth] = rest.split('-').map(Number);
-        const sets = byMonth[k].sort((a, b) => a.sec - b.sec);
-        return `
-        <div>
-          <div class="flex items-baseline gap-2 mb-2">
-            <h3 class="text-sm font-extrabold text-slate-900">${yr}年${monthLabel(mo)} · ${nth === 99 ? "合并/去重卷" : "第" + nth + "套"}</h3>
-            ${i === 0 ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-[#144e4b] text-white font-bold">最新</span>' : ''}
-            <span class="text-[11px] text-slate-400">${sets.length} 份卷</span>
-          </div>
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${sets.map(mockSetRow).join("")}</div>
-        </div>`;
+      if (!window.__mockPickYear || !byYear[window.__mockPickYear]) {
+        window.__mockPickYear = keys.length ? keys[0].split("|")[0] : "2026";   // 默认最新年
+      }
+      var yearKeys = keys.filter(function(k){ return k.split("|")[0] === window.__mockPickYear; });
+      var yearName = window.__mockPickYear + "年";
+
+      // 场次下拉：仅该年份；选中后渲染该场的分类卡
+      var sessionOptions = yearKeys.map(function(k, i){
+        var rest = k.split("|")[1];
+        var mo = +rest.split("-")[0], nth = +rest.split("-")[1];
+        var name = monthLabel(mo) + " · " + (nth === 99 ? "合并/去重卷" : "第" + nth + "套") + "（" + byMonth[k].length + "份卷）";
+        return '<option value="' + k + '"' + (i === 0 ? " selected" : "") + '>' + name + '</option>';
       }).join("");
+
+      box.innerHTML = `
+        <div class="flex items-center gap-2 flex-wrap mb-4">
+          <span class="text-xs font-bold text-slate-400">选择年份与场次：</span>
+          <select id="mock-session-select" onchange="(function(){ window.__mockPickSession = this.value; renderMockSets(); })()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold bg-white">${sessionOptions}</select>
+          <details class="text-[11px]"><summary class="cursor-pointer text-slate-400 hover:text-slate-600 select-none">展开全部场次</summary></details>
+        </div>
+        <div id="mock-session-cards"></div>`;
+
+      // 默认选中年份内第一个场次
+      var pickKey = window.__mockPickSession && byMonth[window.__mockPickSession] ? window.__mockPickSession : (yearKeys[0] || null);
+      window.__mockPickSession = pickKey;
+      var sel = document.getElementById("mock-session-select");
+      if (sel && pickKey) sel.value = pickKey;
+      renderMockSessionCards(pickKey, byMonth, keys);
+    }
+
+    function renderMockSessionCards(pickKey, byMonth, allKeys) {
+      var box = document.getElementById("mock-session-cards");
+      if (!box || !pickKey) return;
+      var sets = (byMonth[pickKey] || []).slice().sort(function(a, b){ return a.sec - b.sec; });
+      var rest = pickKey.split("|")[1];
+      var mo = +rest.split("-")[0], nth = +rest.split("-")[1];
+      var yr = pickKey.split("|")[0];
+      box.innerHTML = `
+        <div class="flex items-baseline gap-2 mb-2">
+          <h3 class="text-sm font-extrabold text-slate-900">${yr}年${monthLabel(mo)} · ${nth === 99 ? "合并/去重卷" : "第" + nth + "套"}</h3>
+          <span class="text-[11px] text-slate-400">${sets.length} 份卷</span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${sets.map(mockSetRow).join("")}</div>
+        <details class="mt-4 text-[11px]"><summary class="cursor-pointer text-slate-400 hover:text-slate-600 select-none">展开${yr}年全部场次</summary>
+          <div class="mt-2 space-y-4">${allKeys.filter(function(k){ return k.split("|")[0] === String(yr); }).map(function(k){
+            var r2 = k.split("|")[1];
+            var m2 = +r2.split("-")[0], n2 = +r2.split("-")[1];
+            var s2 = (byMonth[k] || []).slice().sort(function(a,b){ return a.sec - b.sec; });
+            return '<div><h4 class="text-xs font-bold text-slate-700 mb-1.5">' + yr + '年' + monthLabel(m2) + ' · ' + (n2 === 99 ? "合并/去重卷" : "第" + n2 + "套") + '</h4><div class="grid grid-cols-1 lg:grid-cols-2 gap-3">' + s2.map(mockSetRow).join("") + '</div></div>';
+          }).join("")}</div>
+        </details>`;
     }
 
     // ---- 开考与模块连考 ----
@@ -3747,14 +3789,21 @@ ${lines || "（暂无考点数据）"}`;
         const pacing = x.q.sec === 2 ? 95 : 71;
         if (x.ms > 0) { bySk[k].timed++; if (x.ms <= pacing * 1000) bySk[k].paced++; }
       });
-      const skAxes = Object.values(bySk)
-        .filter(s => s.n >= 3)
-        .sort((a, b) => b.n - a.n).slice(0, 5)
-        .map(s => ({ label: s.sk.slice(0, 8), pct: Math.round(s.ok / s.n * 100) }));
-      const timed = Object.values(bySk).reduce((t, s) => t + s.timed, 0);
-      const paced = Object.values(bySk).reduce((t, s) => t + s.paced, 0);
-      if (timed >= 3) skAxes.push({ label: "速度", pct: Math.round(paced / timed * 100) });
-      const sessionRadar = skAxes.length >= 3 ? radarSVG(skAxes) : "";
+      var skAxes = Object.values(bySk)
+        .filter(function(s){ return s.n >= 2; })
+        .sort(function(a,b){ return b.n - a.n; }).slice(0, 6)
+        .map(function(s){ return { label: s.sk, pct: Math.round(s.ok / s.n * 100), n: s.n, detail: s.n + "题对" + s.ok }; });
+      var timed = Object.values(bySk).reduce(function(t,s){ return t + s.timed; }, 0);
+      var paced = Object.values(bySk).reduce(function(t,s){ return t + s.paced; }, 0);
+      if (timed >= 3) skAxes.push({ label: "速度", pct: Math.round(paced / timed * 100), detail: timed + "题限时内完成" + paced });
+      var sessionRadar = skAxes.length >= 3 ? radarSVG(skAxes) : "";
+      // 维度图例：每个维度是什么，逐条说清
+      var radarLegend = skAxes.map(function(a){
+        return '<div class="flex items-center gap-2 text-[11px] text-slate-600 py-0.5">' +
+          '<span class="w-40 font-semibold text-slate-800 truncate" title="' + a.label + '">' + a.label + '</span>' +
+          '<span class="font-mono w-12 text-right">' + a.pct + '%</span>' +
+          '<span class="text-slate-400">' + (a.detail || '') + '</span></div>';
+      }).join("");
 
       // 估算分：只在题量凑齐标准模块时给（RW 54 / Math 44），缺题不估 —— 不编数字
       const sec1 = d.items.filter(x => x.q.sec === 1);
@@ -3787,8 +3836,9 @@ ${lines || "（暂无考点数据）"}`;
       const sessionRadarHtml = sessionRadar ? `
         <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
           <div>
-            <h3 class="text-sm font-bold text-slate-900 mb-1">本次练习画像</h3>
-            <p class="text-[11px] text-slate-400 leading-relaxed">各维度=该维度本次正确率；速度=按官方配速完成的占比。图形越瘪的轴越该优先补。完整标准模块的估算分见上方蓝框。</p>
+            <h3 class="text-sm font-bold text-slate-900 mb-1">本次练习画像（每个维度是什么）</h3>
+            <p class="text-[11px] text-slate-400 leading-relaxed mb-2">每个轴 = 该维度本次的正确率；速度轴 = 按官方配速（阅读71秒/题、数学95秒/题）完成的占比。图形越瘪的轴越该优先补。少题维度（&lt;2题）不上图，避免误导。</p>
+            <div class="space-y-0.5">${radarLegend}</div>
           </div>
           <div class="flex justify-center">${sessionRadar}</div>
         </div>` : "";
