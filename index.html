@@ -292,7 +292,9 @@
               <button onclick="setCount(10)" class="count-btn px-3 py-1.5 rounded bg-[#144e4b] text-white font-semibold" data-n="10">10 题</button>
               <button onclick="setCount(15)" class="count-btn px-3 py-1.5 rounded border border-slate-300 font-semibold" data-n="15">15 题</button>
               <button onclick="setCount(20)" class="count-btn px-3 py-1.5 rounded border border-slate-300 font-semibold" data-n="20">20 题</button>
+              <button onclick="setCount(40)" class="count-btn px-3 py-1.5 rounded border border-slate-300 font-semibold" data-n="40">连刷 40</button>
             </div>
+            <p class="text-[10px] text-slate-400 mt-1.5">连刷模式：刷到累了随时点「停止交卷」看结果，做了的题都算数。</p>
           </div>
 
           <!-- 时间限制模式 -->
@@ -536,6 +538,7 @@
             <i class="fa-solid fa-calculator mr-1"></i>Calculator
           </button>
           <button onclick="openModal('modal-reference')" id="btn-reference" class="px-2.5 py-1 bg-[#0e3b38] hover:bg-[#0b2e2c] rounded transition">Reference</button>
+          <button onclick="openReviewScreen()" class="px-2.5 py-1 bg-amber-600/80 hover:bg-amber-600 text-white rounded transition font-bold">停止交卷</button>
           <button onclick="quitRunnerConfirm()" class="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900 text-rose-200 rounded transition">退出</button>
         </div>
       </div>
@@ -3130,6 +3133,47 @@ ${lines || "（暂无考点数据）"}`;
       renderDebrief();
       switchView("debrief");
       document.getElementById("view-debrief").classList.remove("hidden");
+      fireAiAutoNote();   // 每次练习结束：AI自动来一小段"问题在哪+该刷多少"
+    }
+
+    function fireAiAutoNote() {
+      const d = debriefData;
+      if (!d || !llmChain().length) return;
+      const answered = d.items.filter(x => x.answered);
+      if (answered.length < 3) return;   // 太少不值得评，也不浪费token
+      const per = {};
+      answered.forEach(x => {
+        const c = x.q.cat || "other";
+        per[c] = per[c] || { n: 0, ok: 0, tags: {}, slowWrong: 0 };
+        per[c].n++;
+        if (x.ok) { per[c].ok++; return; }
+        if (x.tag) per[c].tags[x.tag] = (per[c].tags[x.tag] || 0) + 1;
+        if (x.ms > (x.q.sec === 2 ? 95000 : 71000)) per[c].slowWrong++;
+      });
+      const lines = Object.entries(per).map(([c, v]) =>
+        `- ${c}: ${v.ok}/${v.n} 对` +
+        (Object.keys(v.tags).length ? `，错因: ${Object.entries(v.tags).map(([t, n]) => t + "x" + n).join("、")}` : "") +
+        (v.slowWrong ? `，慢而错${v.slowWrong}道` : ""));
+      const body = document.getElementById("debrief-body");
+      if (!body) return;
+      const note = document.createElement("div");
+      note.id = "debrief-ai-note";
+      note.className = "no-print mt-3 p-3 bg-violet-50 border border-violet-200 rounded-xl text-xs text-slate-700";
+      note.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>AI 正在写本次短评…';
+      body.prepend(note);
+      callDeepSeek([{
+        role: "user",
+        content: `刚做完一组题（作答 ${answered.length} 题，答对 ${d.ok} 题，${d.skipped} 题空着）。分专项数据：\n${lines.join("\n")}\n\n` +
+                 `用两三句中文直说：问题在哪 + 接下来该刷多少题、刷什么。不要客套，不要复述数据。`,
+      }], { system: "你是备考教练。输出一小段话，直接给结论。", maxTokens: 300, temperature: 0.4 })
+        .then(txt => {
+          const el = document.getElementById("debrief-ai-note");
+          if (el) el.innerHTML = "<b>AI短评：</b>" + txt.replace(/###/g, "").replace(/\n/g, " ");
+        })
+        .catch(e => {
+          const el = document.getElementById("debrief-ai-note");
+          if (el) el.innerHTML = '<span class="text-slate-400">AI短评生成失败: ' + e.message + '</span>';
+        });
     }
 
     function closeDebrief() {
