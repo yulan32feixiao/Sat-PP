@@ -626,6 +626,7 @@
             <div id="runner-spr-container" class="hidden my-4">
               <label class="block text-xs font-bold text-slate-600 mb-2">你的答案 (数字或分数，回车进下一题):</label>
               <input type="text" id="runner-spr-input" autocomplete="off" inputmode="text"
+                     style="font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 1.15rem; letter-spacing: .5px;"
                      oninput="handleSprInput(this.value)"
                      onkeydown="if(event.key==='Enter'){event.preventDefault();nextQuestion();}"
                      placeholder="例如: 3/4 或 0.75" class="w-full text-base font-mono font-bold p-3 border-2 border-slate-300 rounded-lg focus:border-[#144e4b] focus:outline-hidden">
@@ -694,7 +695,7 @@
         <div class="flex items-center space-x-3">
           <button onclick="prevQuestion()" id="btn-runner-prev" class="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition">Back</button>
           <button onclick="nextQuestion()" id="btn-runner-next" class="px-5 py-2 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-xs font-semibold shadow-xs transition">Next</button>
-          <button onclick="openReviewScreen()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition">Review & Submit</button>
+          <button onclick="openReviewScreen()" id="btn-runner-review-submit" class="hidden px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition">Review & Submit</button>
         </div>
       </div>
     </section>
@@ -2257,6 +2258,12 @@
     }
 
 
+    /* 做题选项/错题本里的配图限宽，点击新开标签看原图 */
+    document.addEventListener('click', (e) => {
+      const img = e.target.closest('#runner-options-group img, #runner-prompt img, .mistake-detail img');
+      if (img && img.src) window.open(img.src, '_blank');
+    });
+
     /* ===== COACH-CORE START =====
        AI教练·核心引擎（纯函数，可被 tools/test-coach.cjs 单独提取测试）。
        规则透明：今日任务每个数字都给"为什么"。AI只负责诊断/讲解/计划，
@@ -3353,6 +3360,12 @@ ${lines || "（暂无考点数据）"}`;
       }
       if (e.altKey || e.ctrlKey || e.metaKey) return;
 
+      // 回车下一题（不在输入框时；最后一题回车=进检查页）
+      if (e.key === "Enter") {
+        e.preventDefault();
+        nextQuestion();
+        return;
+      }
       // A/B/C/D 或 1/2/3/4 选答案（只对选择题）
       const q = activeSession.questions[activeSession.currentIndex];
       if (q && q.ty !== "spr" && /^[a-dA-D1-4]$/.test(e.key)) {
@@ -3400,10 +3413,6 @@ ${lines || "（暂无考点数据）"}`;
 
     function togglePause() {
       if (!activeSession) return;
-      if (activeSession.isMock && !paused) {
-        alert("全真模考不能暂停 —— 真考也没有这个选项。\n要中断请点右上角「退出」。");
-        return;
-      }
       paused = !paused;
       const veil = document.getElementById('pause-veil');
       const btn = document.getElementById('btn-pause');
@@ -4218,7 +4227,10 @@ ${lines || "（暂无考点数据）"}`;
       document.getElementById('runner-progress-label').innerText = `Question ${index + 1} of ${activeSession.questions.length}`;
 
       document.getElementById('btn-runner-prev').disabled = (index === 0);
-      document.getElementById('btn-runner-next').innerText = (index === activeSession.questions.length - 1) ? 'Review & Submit' : 'Next';
+      const isLast = index === activeSession.questions.length - 1;
+      document.getElementById('btn-runner-next').innerText = 'Next';
+      document.getElementById('btn-runner-next').style.display = isLast ? 'none' : '';
+      document.getElementById('btn-runner-review-submit').style.display = isLast ? '' : 'none';
 
       // 标记
       const fBtn = document.getElementById('runner-btn-flag');
