@@ -2016,6 +2016,86 @@
     }
 
 
+    /* ===== COACH-CORE START =====
+       AI教练·核心引擎（纯函数，可被 tools/test-coach.cjs 单独提取测试）。
+       规则透明：今日任务每个数字都给"为什么"。AI只负责诊断/讲解/计划，
+       今日任务与弱点排行不依赖AI —— 没配key也照常可用。 */
+    function coachAggregate(attempts, mistakes, now) {
+      now = now || Date.now();
+      const weekAgo = now - 7 * 86400000;
+      const totals = { n: 0, ok: 0 };
+      const skMap = {};
+      const quad = { slowRight: 0, fastWrong: 0, slowWrong: 0, fastRight: 0 };
+      let dueCount = 0;
+      Object.values(mistakes || {}).forEach(m => {
+        if (m && !m.mastered && (m.due || 0) <= now) dueCount++;
+      });
+      (attempts || []).forEach(a => {
+        if (!a) return;
+        totals.n++;
+        if (a.ok) totals.ok++;
+        const slow = (a.ms || 0) > (a.sec === 2 ? 95000 : 71000);
+        if (a.ok) quad[slow ? "slowRight" : "fastRight"]++;
+        else quad[slow ? "slowWrong" : "fastWrong"]++;
+        const key = (a.cat || "other") + "|" + (a.sk || "未归类");
+        const s = skMap[key] = skMap[key] ||
+          { cat: a.cat || "other", sk: a.sk || "未归类", n: 0, ok: 0, ms: 0,
+            tags: {}, lapses: 0, recent7: { n: 0, ok: 0 } };
+        s.n++;
+        if (a.ok) s.ok++;
+        s.ms += a.ms || 0;
+        if (!a.ok && a.tag) s.tags[a.tag] = (s.tags[a.tag] || 0) + 1;
+        if ((a.ts || 0) >= weekAgo) { s.recent7.n++; if (a.ok) s.recent7.ok++; }
+        const m = (mistakes || {})[a.qid];
+        if (m && m.lapses) s.lapses = Math.max(s.lapses, m.lapses);
+      });
+      const skills = Object.values(skMap).map(s => ({
+        cat: s.cat, sk: s.sk, n: s.n, ok: s.ok, ms: s.ms,
+        acc: s.n ? Math.round(s.ok / s.n * 100) : 0,
+        avgMs: s.n ? Math.round(s.ms / s.n) : 0,
+        tags: s.tags, lapses: s.lapses, recent7: s.recent7,
+      })).sort((a, b) => a.acc - b.acc);
+      return {
+        totals: { n: totals.n, ok: totals.ok,
+                  acc: totals.n ? Math.round(totals.ok / totals.n * 100) : 0 },
+        skills, dueCount, quad, generatedAt: now,
+      };
+    }
+
+    function coachTodayPlan(agg, prefs, now) {
+      prefs = prefs || {};
+      const minutes = Math.max(10, Math.min(180, prefs.dailyMinutes || 40));
+      const tasks = [];
+      let usedMin = 0;
+      if (agg.dueCount > 0) {
+        const n = Math.min(agg.dueCount, 15);
+        tasks.push({ key: "due", type: "redo", label: "到期错题重练", n,
+                     cat: null, sk: null,
+                     why: `${agg.dueCount} 道错题到了间隔复习期（错题退回第1盒，1天后到期）` });
+        usedMin += Math.round(n * 1.6);
+      }
+      const weak = agg.skills.filter(s => s.n >= 5 && s.acc < 75)
+        .sort((a, b) => (a.acc - b.acc) || (b.n - a.n)).slice(0, 2);
+      weak.forEach(s => {
+        const remain = Math.max(0, minutes - usedMin);
+        const perQ = s.cat === "math" ? 1.6 : 1.2;   // 官方配速95s/71s换算
+        const n = remain < 8 ? 8 : Math.max(8, Math.min(20, Math.floor(remain / perQ)));
+        usedMin += Math.round(n * perQ);
+        tasks.push({ key: "drill-" + s.sk, type: "drill",
+                     label: `${s.sk} 专项`, n, cat: s.cat, sk: s.sk,
+                     why: `正确率 ${s.acc}%（${s.ok}/${s.n} 题）低于 75% 目标线` +
+                          (s.lapses ? `，累计复发 ${s.lapses} 次` : "") });
+      });
+      if (!tasks.length) {
+        tasks.push({ key: "maintain", type: "drill", label: "保持手感（随机混合）",
+                     n: 10, cat: null, sk: null,
+                     why: "目前没有明显弱点（无到期错题、无低于75%考点），保持题感" });
+        usedMin = 15;
+      }
+      return { tasks, estMinutes: usedMin, dailyMinutes: minutes };
+    }
+    /* ===== COACH-CORE END ===== */
+
     // ================= 视图路由导航 (VIEW ROUTER) =================
     function switchView(viewName) {
       document.querySelectorAll(".view-panel").forEach(el => el.classList.add("hidden"));
