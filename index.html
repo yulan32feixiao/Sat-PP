@@ -82,6 +82,9 @@
         <button onclick="switchView('mock')" id="tab-mock" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100">
           <i class="fa-solid fa-laptop-code mr-1.5"></i>全真模考
         </button>
+        <button onclick="switchView('review26')" id="tab-review26" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100">
+          <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>2026真题回顾
+        </button>
         <button onclick="switchView('mistakes')" id="tab-mistakes" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100">
           <i class="fa-solid fa-book-bookmark mr-1.5"></i>错题本 <span id="mistake-count-badge" class="ml-1 text-xs bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded-full font-bold">0</span>
         </button>
@@ -127,9 +130,22 @@
       
       <!-- 页面标头 -->
       <div class="pb-6 border-b border-slate-200">
-        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">SAT 专项练习与针对性提升</h1>
-        <p class="text-xs sm:text-sm text-slate-500 mt-1">按五大核心维度分类，点击任意单项可展开 College Board 官方更细致的二级考点，支持自定义题量与配速。</p>
-      </div>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">SAT 专项练习与针对性提升</h1>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">按五大核心维度分类，点击任意单项可展开二级考点，支持自定义题量与配速。</p>
+          </div>
+          <!-- 题库来源：官方公开题库 / 2026 考后真题（后者考点为自动推断） -->
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-bold text-slate-400">题库来源</span>
+            <div class="flex rounded-lg overflow-hidden border border-slate-300">
+              <button id="src-bank" onclick="setDrillSource('bank')"
+                      class="px-3 py-1.5 text-xs font-bold transition bg-[#144e4b] text-white">官方题库</button>
+              <button id="src-mock" onclick="setDrillSource('mock')"
+                      class="px-3 py-1.5 text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-50 border-l border-slate-300">2026真题</button>
+            </div>
+          </div>
+        </div>
 
       <!-- 严格按照用户截图实现的 5 大专项分类条 (Top 5 Cards Strip) -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-6">
@@ -314,31 +330,77 @@
     <section id="view-mock" class="view-panel hidden max-w-7xl mx-auto px-4 py-8 w-full">
       <div class="pb-6 border-b border-slate-200">
         <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Digital SAT 全真模考</h1>
-        <p class="text-xs sm:text-sm text-slate-500 mt-1">完整 54 题 R&W + 44 题 Math，按官方题数和总时长。中途刷新可恢复进度。</p>
+        <p class="text-xs sm:text-sm text-slate-500 mt-1">2026 真题按套整场模考（Module 1 → Module 2 连考、官方限时），新场次排前面。每套都标注了来源与不确定性。</p>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-        <div class="bg-white p-6 rounded-xl border border-slate-200 flex flex-col justify-between">
-          <div>
-            <div class="text-xs font-bold text-[#144e4b] uppercase mb-1">Standard Full Test</div>
-            <h2 class="text-lg font-bold text-slate-900">完整自适应全真模考</h2>
-            <p class="text-xs text-slate-500 mt-2 leading-relaxed">按官方题数和总时长出一套完整卷（R&W 64 分钟 + Math 70 分钟）。<b class="text-amber-700">暂不支持官方的 4 模块分段、中场休息和两阶段自适应路由</b>—— 那需要官方校准过的题目参数，这里给不出来，所以不假装有。</p>
-          </div>
-          <button onclick="startMock('full')" class="mt-6 py-2.5 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-xs font-bold transition">
-            开始完整模考
-          </button>
-        </div>
-        <div class="bg-white p-6 rounded-xl border border-slate-200 flex flex-col justify-between">
-          <div>
-            <div class="text-xs font-bold text-slate-600 uppercase mb-1">Quick Section Test</div>
-            <h2 class="text-lg font-bold text-slate-900">单科快速自适应测验</h2>
-            <p class="text-xs text-slate-500 mt-2 leading-relaxed">仅测 R&W (54题) 或 Math (44题)，快速检测单科薄弱点。</p>
-          </div>
-          <div class="flex space-x-2 mt-6">
-            <button onclick="startMock('rw')" class="flex-1 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg text-xs font-bold transition">R&W 模考</button>
-            <button onclick="startMock('math')" class="flex-1 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg text-xs font-bold transition">Math 模考</button>
+
+      <!-- ============ 2026 真题模考（动态渲染，新者优先） ============ -->
+      <div class="mt-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-bold text-slate-900">
+            <i class="fa-solid fa-calendar-days text-[#144e4b] mr-1.5"></i>2026 真题 · 按场次
+            <span id="mock2026-status" class="ml-2 text-xs font-semibold text-slate-400">载入中…</span>
+          </h2>
+          <div class="text-[11px] text-slate-400 leading-relaxed text-right hidden sm:block">
+            阅读语法 32 分/模块 · 数学 35 分/模块<br>R&W 模块按官方标准不提供计算器
           </div>
         </div>
+        <div id="mock2026-list" class="mt-4 space-y-8"></div>
       </div>
+
+      <!-- ============ 官方题库随机组卷（原有功能） ============ -->
+      <div class="mt-10 pt-6 border-t border-slate-200">
+        <h2 class="text-base font-bold text-slate-900 mb-4">
+          <i class="fa-solid fa-shuffle text-slate-400 mr-1.5"></i>官方题库 · 随机组卷
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-white p-6 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <div>
+              <div class="text-xs font-bold text-[#144e4b] uppercase mb-1">Standard Full Test</div>
+              <h3 class="text-lg font-bold text-slate-900">完整全真模考</h3>
+              <p class="text-xs text-slate-500 mt-2 leading-relaxed">按官方题数和总时长出一套完整卷（R&amp;W 64 分钟 + Math 70 分钟）。<b class="text-amber-700">暂不支持官方的 4 模块分段、中场休息和两阶段自适应路由</b>—— 那需要官方校准过的题目参数，这里给不出来，所以不假装有。</p>
+            </div>
+            <button onclick="startMock('full')" class="mt-6 py-2.5 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-xs font-bold transition">
+              开始完整模考
+            </button>
+          </div>
+          <div class="bg-white p-6 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <div>
+              <div class="text-xs font-bold text-slate-600 uppercase mb-1">Quick Section Test</div>
+              <h3 class="text-lg font-bold text-slate-900">单科快速测验</h3>
+              <p class="text-xs text-slate-500 mt-2 leading-relaxed">仅测 R&amp;W (54题) 或 Math (44题)，快速检测单科薄弱点。</p>
+            </div>
+            <div class="flex space-x-2 mt-6">
+              <button onclick="startMock('rw')" class="flex-1 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg text-xs font-bold transition">R&amp;W 模考</button>
+              <button onclick="startMock('math')" class="flex-1 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg text-xs font-bold transition">Math 模考</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ----------------- 视图: 2026 模考模块间过渡屏 ----------------- -->
+    <section id="view-mockbreak" class="view-panel hidden max-w-2xl mx-auto px-4 py-16 w-full">
+      <div class="bg-white border border-slate-200 rounded-2xl p-10 text-center">
+        <div class="w-16 h-16 mx-auto rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center">
+          <i class="fa-solid fa-mug-hot text-2xl text-[#144e4b]"></i>
+        </div>
+        <h2 class="mt-5 text-xl font-bold text-slate-900" id="mockbreak-title">Module 1 已提交</h2>
+        <p class="mt-2 text-sm text-slate-500 leading-relaxed" id="mockbreak-desc">中场休息，不限时长。准备好了再进 Module 2，计时从进入那一刻开始。</p>
+        <div class="mt-8 space-y-3">
+          <button id="mockbreak-next" class="w-full py-3 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-sm font-bold transition"></button>
+          <button onclick="mockBreakEnd()" class="w-full py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-semibold transition">结束本场，先看 Module 1 复盘</button>
+        </div>
+        <p class="mt-4 text-[11px] text-slate-400">Module 1 的作答已记录；关闭页面后 Module 2 需要从「全真模考」重新开始。</p>
+      </div>
+    </section>
+
+    <!-- ----------------- 视图: 2026 真题回顾 ----------------- -->
+    <section id="view-review26" class="view-panel hidden max-w-7xl mx-auto px-4 py-8 w-full">
+      <div class="pb-6 border-b border-slate-200">
+        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">2026 真题回顾</h1>
+        <p class="text-xs sm:text-sm text-slate-500 mt-1">只统计 2026 真题模考的作答：每套完成度、正确率、错题重做。与官方题库的练习记录互不掺和。</p>
+      </div>
+      <div id="review26-body" class="mt-6"></div>
     </section>
 
     <!-- ----------------- 视图 3: 错题本 (MISTAKES) ----------------- -->
@@ -413,7 +475,7 @@
           <button onclick="openDesmosModal()" id="btn-desmos" class="px-2.5 py-1 bg-[#0e3b38] hover:bg-[#0b2e2c] rounded transition">
             <i class="fa-solid fa-calculator mr-1"></i>Calculator
           </button>
-          <button onclick="openModal('modal-reference')" class="px-2.5 py-1 bg-[#0e3b38] hover:bg-[#0b2e2c] rounded transition">Reference</button>
+          <button onclick="openModal('modal-reference')" id="btn-reference" class="px-2.5 py-1 bg-[#0e3b38] hover:bg-[#0b2e2c] rounded transition">Reference</button>
           <button onclick="quitRunnerConfirm()" class="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900 text-rose-200 rounded transition">退出</button>
         </div>
       </div>
@@ -487,8 +549,13 @@
 
             <!-- 填空输入框 -->
             <div id="runner-spr-container" class="hidden my-4">
-              <label class="block text-xs font-bold text-slate-600 mb-2">你的答案 (数字或分数):</label>
-              <input type="text" id="runner-spr-input" oninput="handleSprInput(this.value)" placeholder="例如: 3/4 或 0.75" class="w-full text-base font-mono font-bold p-3 border-2 border-slate-300 rounded-lg focus:border-[#144e4b] focus:outline-hidden">
+              <label class="block text-xs font-bold text-slate-600 mb-2">你的答案 (数字或分数，回车进下一题):</label>
+              <input type="text" id="runner-spr-input" autocomplete="off" inputmode="text"
+                     oninput="handleSprInput(this.value)"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();nextQuestion();}"
+                     placeholder="例如: 3/4 或 0.75" class="w-full text-base font-mono font-bold p-3 border-2 border-slate-300 rounded-lg focus:border-[#144e4b] focus:outline-hidden">
+              <!-- 官方填空只允许 数字 . / - ；小键盘按这个规则给，触屏和快输都顺手 -->
+              <div id="spr-pad" class="hidden mt-2 max-w-[260px] grid grid-cols-4 gap-1.5"></div>
             </div>
 
             <!-- 即时解析抽屉 -->
@@ -679,15 +746,17 @@
       <div id="calc-basic" class="flex-1 bg-white p-5 flex flex-col">
         <div class="border border-slate-200 rounded-xl p-4 bg-slate-50">
           <input id="calc-expr" type="text" autocomplete="off" spellcheck="false"
-                 placeholder="输入算式，回车求值。支持 2(3+1)、√9、π、50%、2^10、sin/ln/log"
-                 oninput="calcLive()" onkeydown="if(event.key==='Enter'){event.preventDefault();calcRun(true);}"
+                 placeholder="输入算式，回车求值。支持 2(3+1)、√9、π、50%、2^10、sin/ln/log、Ans"
+                 oninput="calcLive()" onkeydown="calcKeydown(event)"
                  class="w-full bg-transparent text-xl font-mono outline-none text-slate-800 placeholder:text-slate-400 placeholder:text-sm">
           <div id="calc-ans" class="mt-2 text-right text-2xl font-mono font-bold text-emerald-700 min-h-[2rem]"></div>
           <div id="calc-err" class="text-right text-xs text-rose-600 min-h-[1rem]"></div>
         </div>
-        <div id="calc-pad" class="grid grid-cols-5 gap-1.5 mt-4 text-sm"></div>
+        <div id="calc-tape" class="mt-2 max-h-16 overflow-y-auto text-[11px] font-mono text-slate-400 space-y-0.5"></div>
+        <div id="calc-pad" class="grid grid-cols-6 gap-1.5 mt-2 text-sm"></div>
         <p class="mt-auto pt-3 text-[11px] text-slate-400">
           数字 SAT 数学全程可用计算器。这个是自带的，不联网也能用；需要作图再切 Desmos。
+          ↑↓ 翻历史算式，Ans 引用上次结果，点历史可直接调回。
         </p>
       </div>
 
@@ -1303,10 +1372,13 @@
       return 'custom';
     }
 
-    /* 各专项进度条 = 该专项的真实正确率。没做过就是 0，不编数字。 */
+    /* 各专项进度条 = 该专项的真实正确率。没做过就是 0，不编数字。
+       2026真题模式下只统计 m26. 前缀的作答，和官方题库的记录分开。 */
     function updateCategoryProgress() {
       const acc = {};
-      (attempts || []).forEach(a => {
+      const srcAtt = (attempts || []).filter(a =>
+        drillSource === 'mock' ? String(a && a.qid || '').startsWith('m26.') : true);
+      srcAtt.forEach(a => {
         if (!a || !a.cat) return;
         const t = acc[a.cat] = acc[a.cat] || { n: 0, ok: 0 };
         t.n++; if (a.ok) t.ok++;
@@ -1333,13 +1405,15 @@
         counts[cat] = (counts[cat] || 0) + 1;
       });
 
+      // 2026 真题只注册进 BYID（错题本/生词/AI 用），不进专项练习池
+      if (typeof MOCK !== "undefined" && MOCK && MOCK.questions) {
+        MOCK.questions.forEach(q => { BYID[q.id] = q; });
+      }
+
       counts.custom = Object.values(mistakes).filter(m => !m.mastered).length;
 
-      // 更新卡片数字
-      document.getElementById('cnt-vocab').innerText = counts.vocab;
-      document.getElementById('cnt-reading').innerText = counts.reading;
-      document.getElementById('cnt-grammar').innerText = counts.grammar;
-      document.getElementById('cnt-math').innerText = counts.math;
+      // 更新卡片数字（跟随当前题库来源：官方 / 2026真题）
+      renderCatCounts();
 
       // 进度条：按这个专项的真实正确率画。
       // 原来 5 条全是写死的 15/25/20/30/10%，不管你做没做题都那样 ——
@@ -1385,6 +1459,7 @@
         setBankBadge("bg-emerald-50 text-emerald-800 border-emerald-200", "fa-circle-check",
                      full.length.toLocaleString() + " 题 (官方原题库)");
         initBank();
+        loadMock2026();   // 2026 真题包：异步加载，失败不阻塞官方题库
         if (typeof refreshBackupNag === "function") refreshBackupNag();
         // 账号：有历史会话就恢复，magic link 回跳则在这里被接住
         Auth.init().then(async () => {
@@ -1407,6 +1482,339 @@
       }
     }
 
+    // ================= 2026 真题模考引擎 (MOCK 2026) =================
+    // 数据来自 mock2026.bin：第三方考后回忆重排版，答案非官方 —— 每套的不确定性
+    // 在列表里明说，不冒充官方。题目只进 BYID（错题本/生词/AI 可用），
+    // 不进 BANK（不混入官方题库的专项练习池）。
+    let MOCK = null;
+    let MOCK_BY_SET = {};
+
+    async function loadMock2026() {
+      const st = document.getElementById('mock2026-status');
+      try {
+        const r = await fetch("mock2026.bin");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const buf = await r.arrayBuffer();
+        const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+        MOCK = JSON.parse(await new Response(stream).text());
+        MOCK_BY_SET = {};
+        MOCK.questions.forEach(q => {
+          (MOCK_BY_SET[q.setId] = MOCK_BY_SET[q.setId] || []).push(q);
+          BYID[q.id] = q;              // initBank 会重建 BYID，那里也会补注册
+        });
+        MOCK.sets.forEach(s => {
+          s.qs = (MOCK_BY_SET[s.setId] || []).filter(q => q.sec === s.sec)
+                    .sort((a, b) => (a.mod - b.mod) || (a.num - b.num));
+        });
+        if (st) st.textContent = `${MOCK.sets.length} 套 · ${MOCK.questions.length} 题`;
+        renderMockSets();
+        renderMockReview();
+      } catch (e) {
+        console.warn("[mock2026] 加载失败：", e && e.message || e);
+        if (st) st.textContent = "加载失败（mock2026.bin 缺失或损坏）";
+      }
+    }
+
+    const MONTH_CN = { 10: "10月", 9: "9月", 8: "8月", 6: "6月", 5: "5月", 3: "3月" };
+
+    function setChips(s) {
+      // 每套的不确定性，摆在明面上
+      const chips = [];
+      const total = s.m1 + s.m2;
+      if (s.note || total < s.expected * 2) {
+        chips.push(['bg-amber-50 text-amber-800 border-amber-200',
+                    `不完整：${s.note || `共${total}题`}`]);
+      } else {
+        chips.push(['bg-emerald-50 text-emerald-800 border-emerald-200',
+                    `${total}题完整（${s.m1}+${s.m2}）`]);
+      }
+      chips.push(['bg-slate-100 text-slate-600 border-slate-200', '考后回忆·第三方重排']);
+      if (s.audit) {
+        chips.push(['bg-emerald-50 text-emerald-800 border-emerald-200', '答案抽验全对']);
+      } else {
+        chips.push(['bg-slate-100 text-slate-600 border-slate-200', '答案非官方·未抽查']);
+      }
+      if (s.lowFigs > 0) chips.push(['bg-amber-50 text-amber-800 border-amber-200',
+                                     `${s.lowFigs}张低清图`]);
+      chips.push(['bg-slate-100 text-slate-600 border-slate-200', '难度按模块推断']);
+      return chips.map(c => `<span class="text-[10px] px-1.5 py-0.5 rounded border font-semibold ${c[0]}">${c[1]}</span>`)
+                  .join(" ");
+    }
+
+    function setDetailText(s) {
+      const secName = s.sec === 1 ? "阅读语法" : "数学";
+      const exp = s.expected;
+      return `<b>${secName} · ${s.title}</b><br>
+        · 来源：2026年考后回忆版，第三方重排录入（带编纂方水印），非 College Board 官方发布。<br>
+        · 完整性：Module 1 ${s.m1}题 / Module 2 ${s.m2}题（官方标准各${exp}题）${(s.m1 === exp && s.m2 === exp) ? "，完整，可计时模考。" : "，<b>缺题，不适合完整计时模考</b>，限时已按题数等比缩短。" + (s.note ? `（${s.note}）` : "")}<br>
+        · 答案：题库方提供的答案+中文解析，非官方答案键。${s.audit ? "本套" + s.audit + "。" : "本套未逐题核验，遇争议解析以题目逻辑为准。"}<br>
+        · 配图：${s.figs}张${s.lowFigs ? `，其中${s.lowFigs}张源文件分辨率偏低，可能模糊` : ""}。<br>
+        · 难度与考点标签由模块位置和题干自动推断，非官方标注。`;
+    }
+
+    function mockSetRow(s) {
+      const secName = s.sec === 1 ? "Reading & Writing" : "Math";
+      const perQ = s.sec === 1 ? 32 * 60 / 27 : 35 * 60 / 22;
+      const mkSess = (mods) => `startMockSet('${s.id}','${mods.join(",")}')`;
+      let btns = "";
+      if (s.m1 > 0 && s.m2 > 0) {
+        btns = `<button onclick="${mkSess([1, 2])}" class="px-3 py-1.5 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-[11px] font-bold transition">整场连考 M1→M2</button>
+                <button onclick="${mkSess([1])}" class="px-2.5 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-600 rounded-lg text-[11px] font-semibold transition">只练 M1</button>
+                <button onclick="${mkSess([2])}" class="px-2.5 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-600 rounded-lg text-[11px] font-semibold transition">只练 M2</button>`;
+      } else if (s.m2 > 0) {
+        btns = `<button onclick="${mkSess([2])}" class="px-3 py-1.5 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-[11px] font-bold transition">练 M2-Easy（${Math.round(s.m2 * perQ / 60)}分钟）</button>`;
+      } else {
+        btns = `<button onclick="${mkSess([1])}" class="px-3 py-1.5 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-[11px] font-bold transition">练 M1（${Math.round(s.m1 * perQ / 60)}分钟）</button>`;
+      }
+      return `
+      <div class="bg-white border border-slate-200 rounded-xl p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm font-bold text-slate-900">${secName}</span>
+            ${s.region === 'ap' ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 font-semibold">亚太</span>' : ''}
+            ${s.region === 'na' ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 font-semibold">北美</span>' : ''}
+            ${/easy/i.test(s.id) ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-semibold">M2-Easy</span>' : ''}
+          </div>
+          <div class="flex items-center gap-1.5 flex-wrap">${btns}</div>
+        </div>
+        <div class="mt-2.5 flex flex-wrap gap-1.5 items-center">${setChips(s)}</div>
+        <details class="mt-2 group">
+          <summary class="text-[11px] text-slate-400 cursor-pointer hover:text-slate-600 select-none">这套题的不确定性说明</summary>
+          <div class="mt-1.5 text-[11px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-100 rounded-lg p-2.5">${setDetailText(s)}</div>
+        </details>
+      </div>`;
+    }
+
+    function renderMockSets() {
+      const box = document.getElementById('mock2026-list');
+      if (!box) return;
+      if (!MOCK) return;   // 还没载入，状态字由 loadMock2026 维护
+      const byMonth = {};
+      MOCK.sets.forEach(s => {
+        const k = `${s.month}-${s.nth}`;
+        (byMonth[k] = byMonth[k] || []).push(s);
+      });
+      const keys = Object.keys(byMonth).sort((a, b) => {
+        const [ma, na] = a.split('-').map(Number), [mb, nb] = b.split('-').map(Number);
+        return mb - ma || na - nb;          // 月份新的在前，同一场的套号按 1、2、3 排
+      });
+      box.innerHTML = keys.map((k, i) => {
+        const [mo, nth] = k.split('-').map(Number);
+        const sets = byMonth[k].sort((a, b) => a.sec - b.sec);
+        return `
+        <div>
+          <div class="flex items-baseline gap-2 mb-2">
+            <h3 class="text-sm font-extrabold text-slate-900">2026年${MONTH_CN[mo] || mo + '月'} · 第${nth}套</h3>
+            ${i === 0 ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-[#144e4b] text-white font-bold">最新</span>' : ''}
+            <span class="text-[11px] text-slate-400">${sets.length} 份卷</span>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${sets.map(mockSetRow).join("")}</div>
+        </div>`;
+      }).join("");
+    }
+
+    // ---- 开考与模块连考 ----
+    function buildMockModuleSession(s, mod) {
+      const qs = s.qs.filter(q => q.mod === mod);
+      const perQ = s.sec === 1 ? 32 * 60 / 27 : 35 * 60 / 22;
+      const secName = s.sec === 1 ? "Reading & Writing" : "Math";
+      return {
+        title: `${s.title.replace(/阅读语法|数学/, secName)}`,
+        moduleTag: `Module ${mod} · ${qs.length}题 · ${Math.round(qs.length * perQ / 60)}分钟${qs.length < s.expected ? "（缺题限时已缩短）" : ""}`,
+        isMock: true,
+        mock2026: true,
+        setId: s.setId,
+        calcAllowed: s.sec === 2,      // 官方标准：R&W 全程无计算器
+        questions: qs,
+        timeLimitSec: Math.round(qs.length * perQ),
+        answers: qs.map(() => ({ picked: null, struck: [], flagged: false })),
+        currentIndex: 0,
+        startTime: Date.now()
+      };
+    }
+
+    function startMockSet(setRowId, mods) {
+      if (!MOCK) return alert("2026真题包还没载入好，稍等几秒再试。");
+      const s = MOCK.sets.find(x => x.id === setRowId);
+      if (!s) return;
+      mods = String(mods).split(",").map(Number);
+      const first = buildMockModuleSession(s, mods[0]);
+      if (mods.length > 1) {
+        first.mockNext = buildMockModuleSession(s, mods[1]);
+        first.mockNext._prevTitle = first.title;
+      }
+      first.mockBreakInfo = {
+        next: mods.length > 1 ? `Module ${mods[1]}` : null,
+        secName: s.sec === 1 ? "Reading & Writing" : "Math"
+      };
+      initRunnerSession(first);
+    }
+
+    let _mockChain = null;
+    function showMockBreak(nextSession) {
+      _mockChain = nextSession;
+      document.getElementById('mockbreak-title').innerText = "Module 1 已提交";
+      document.getElementById('mockbreak-desc').innerText =
+        "中场休息，不限时长。准备好了再进 Module 2，计时从进入那一刻开始。";
+      document.getElementById('mockbreak-next').innerText =
+        `进入 ${nextSession.mock2026 ? "Module 2" : "下一模块"}（${nextSession.moduleTag}）`;
+      document.getElementById('mockbreak-next').onclick = () => {
+        const nx = _mockChain;
+        _mockChain = null;
+        initRunnerSession(nx);
+      };
+      switchView('mockbreak');
+    }
+    function mockBreakEnd() {
+      // 结束本场：M1 作答已记录，直接看复盘（复盘数据来自刚才那场 session）
+      if (_mockChain && _mockChain._debrief) {
+        const d = _mockChain._debrief;
+        _mockChain = null;
+        openDebrief(d.session, d.okCount);
+      } else {
+        _mockChain = null;
+        switchView('mock');
+      }
+    }
+
+    // ---- 2026 真题回顾 ----
+    function mock26Attempts() {
+      return (attempts || []).filter(a => a && typeof a.qid === "string" && a.qid.startsWith("m26."));
+    }
+
+    function renderMockReview() {
+      const box = document.getElementById('review26-body');
+      if (!box) return;
+      if (!MOCK) { box.innerHTML = '<p class="text-sm text-slate-400">2026真题包载入中…</p>'; return; }
+      const att = mock26Attempts();
+      const bySet = {};
+      att.forEach(a => {
+        const sid = a.qid.split(".")[1];
+        (bySet[sid] = bySet[sid] || []).push(a);
+      });
+      const wrong26 = Object.values(mistakes || {}).filter(m => !m.mastered && String(m.qid).startsWith("m26."));
+
+      if (!att.length) {
+        box.innerHTML = `
+          <div class="bg-white border border-slate-200 rounded-xl p-10 text-center">
+            <i class="fa-solid fa-clock-rotate-left text-4xl text-slate-200"></i>
+            <p class="mt-4 text-slate-700 font-semibold">还没有 2026 真题作答记录</p>
+            <p class="mt-1 text-sm text-slate-500">到「全真模考」挑一套最新场次开考，做完这里会按套统计。</p>
+            <button onclick="switchView('mock')" class="mt-5 px-4 py-2 bg-[#144e4b] text-white rounded-lg text-sm font-semibold hover:bg-[#0e3b38]">去全真模考</button>
+          </div>`;
+        return;
+      }
+
+      const okN = att.filter(a => a.ok).length;
+      // 同一场考试的 RW/数学共用 setId，统计必须再按科目过滤
+      const setAttemptsOf = (s) => ((bySet[s.setId.replace('-easy','')] || [])
+        .concat(bySet[s.setId] || []))
+        .filter(a => BYID[a.qid] && BYID[a.qid].sec === s.sec);
+      const doneSets = MOCK.sets.filter(s => {
+        const list = setAttemptsOf(s);
+        return s.qs.length > 0 && list.length >= s.qs.length;
+      }).length;
+      const cards = [
+        ["已作答", att.length + " 题", `覆盖 ${Object.keys(bySet).length} 个场次`],
+        ["正确率", Math.round(okN / att.length * 100) + "%", `${okN}/${att.length}`],
+        ["完整刷完的卷", doneSets + " 份", `共 ${MOCK.sets.length} 份可用`],
+        ["待攻克错题", wrong26.length + " 题", wrong26.length ? "下面可逐套重做" : "暂无"],
+      ].map(c => `
+        <div class="bg-white p-5 rounded-xl border border-slate-200 text-center">
+          <div class="text-[11px] text-slate-400 font-bold uppercase tracking-wide">${c[0]}</div>
+          <div class="text-3xl font-extrabold text-slate-900 mt-1.5">${c[1]}</div>
+          <div class="text-[11px] text-slate-500 mt-1">${c[2]}</div>
+        </div>`).join("");
+
+      // 按月正确率
+      const byMonth = {};
+      att.forEach(a => {
+        const mo = (a.qid.split(".")[1] || "").match(/^2026(\d+)/);
+        const m = mo ? +mo[1] : 0;
+        (byMonth[m] = byMonth[m] || { n: 0, ok: 0 }).n++;
+        if (a.ok) byMonth[m].ok++;
+      });
+      const bars = Object.keys(byMonth).map(Number).sort((a, b) => b - a).map(m => {
+        const v = byMonth[m], pct = Math.round(v.ok / v.n * 100);
+        return `
+        <div class="flex items-center gap-2 text-[11px]">
+          <span class="w-14 text-right text-slate-500 font-semibold">${MONTH_CN[m] || m + '月'}</span>
+          <div class="flex-1 h-3.5 bg-slate-100 rounded-full overflow-hidden">
+            <div class="h-full ${pct >= 80 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-500' : 'bg-rose-500'}" style="width:${pct}%"></div>
+          </div>
+          <span class="w-16 text-slate-500">${v.ok}/${v.n} · ${pct}%</span>
+        </div>`;
+      }).join("");
+
+      // 每套状态（新者优先）
+      const rows = [];
+      const seen = {};
+      MOCK.sets.forEach(s => {
+        const list = setAttemptsOf(s);
+        const done = list.length;
+        const ok = list.filter(a => a.ok).length;
+        const wq = wrong26.filter(m => String(m.qid).startsWith("m26." + s.setId + ".")
+                                      && BYID[m.qid] && BYID[m.qid].sec === s.sec).length;
+        const status = done === 0 ? '<span class="text-slate-400 font-semibold">未开始</span>'
+          : done >= s.qs.length ? '<span class="text-emerald-700 font-bold">已完成</span>'
+          : `<span class="text-amber-700 font-semibold">进行中 ${done}/${s.qs.length}</span>`;
+        const acc = done ? Math.round(ok / done * 100) + "%" : "—";
+        rows.push(`
+        <div class="py-2.5 border-b border-slate-100 last:border-0 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div class="flex-1 min-w-[220px]">
+            <div class="text-sm font-semibold text-slate-800">${s.title}</div>
+            <div class="text-[11px] text-slate-400">${s.m1 + s.m2}题 · ${s.audit ? "答案抽验全对" : "答案非官方"}</div>
+          </div>
+          <div class="text-xs w-20">${status}</div>
+          <div class="text-xs w-16 text-slate-600 font-semibold">${acc}</div>
+          <div class="w-28">
+            ${wq ? `<button onclick="redoMockWrong('${s.id}')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition">重做错题×${wq}</button>` : '<span class="text-[11px] text-slate-300">无错题</span>'}
+          </div>
+        </div>`);
+      });
+
+      box.innerHTML = `
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">${cards}</div>
+        <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="bg-white border border-slate-200 rounded-xl p-5 lg:col-span-1">
+            <h3 class="text-sm font-bold text-slate-900 mb-3">按场次月份的正确率</h3>
+            <div class="space-y-2">${bars}</div>
+            <div class="mt-4 pt-3 border-t border-slate-100">
+              <button onclick="redoMockWrong('all')" class="w-full py-2 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-xs font-bold transition">
+                重做全部 2026 错题（${wrong26.length}）
+              </button>
+            </div>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-xl p-5 lg:col-span-2">
+            <h3 class="text-sm font-bold text-slate-900 mb-1">每套完成度（新 → 旧）</h3>
+            <div>${rows.join("")}</div>
+          </div>
+        </div>`;
+    }
+
+    function redoMockWrong(setRowId) {
+      if (!MOCK) return;
+      const srow = setRowId === 'all' ? null : MOCK.sets.find(x => x.id === setRowId);
+      const prefix = setRowId === 'all' ? "m26." : "m26." + (srow || {}).setId + ".";
+      const qs = Object.values(mistakes || {})
+        .filter(m => !m.mastered && String(m.qid).startsWith(prefix)
+                     && (!srow || (BYID[m.qid] && BYID[m.qid].sec === srow.sec)))
+        .map(m => BYID[m.qid]).filter(Boolean);
+      if (!qs.length) return alert("这套暂时没有待攻克的错题。");
+      initRunnerSession({
+        title: "2026 真题错题重做" + (setRowId === 'all' ? "（全部）" : ""),
+        moduleTag: `${qs.length} 题 · 自主配速`,
+        isMock: false,
+        mock2026: true,
+        calcAllowed: true,             // 重做以弄懂为主，不模拟考试限制
+        questions: qs,
+        timeLimitSec: 0,
+        answers: qs.map(() => ({ picked: null, struck: [], flagged: false })),
+        currentIndex: 0,
+        startTime: Date.now()
+      });
+    }
+
     // 展开/折叠指定专项分类的二级技能 (Expandable Official Details)
     function toggleCategoryDetail(catKey) {
       const panel = document.getElementById('category-detail-panel');
@@ -1424,18 +1832,64 @@
       document.getElementById('category-detail-panel').classList.add('hidden');
     }
 
+    // ================= 专项练习的题库来源（官方 / 2026真题） =================
+    let drillSource = 'bank';
+    function drillPool() {
+      return (drillSource === 'mock' && MOCK && MOCK.questions) ? MOCK.questions : BANK;
+    }
+    function setDrillSource(s) {
+      if (s === 'mock' && (!MOCK || !MOCK.questions)) {
+        return alert("2026真题包还没载入好，稍等几秒再切。");
+      }
+      drillSource = s;
+      const bank = document.getElementById('src-bank');
+      const mock = document.getElementById('src-mock');
+      if (bank && mock) {
+        bank.className = "px-3 py-1.5 text-xs font-bold transition " +
+          (s === 'bank' ? "bg-[#144e4b] text-white" : "bg-white text-slate-600 hover:bg-slate-50 border-l-0");
+        mock.className = "px-3 py-1.5 text-xs font-bold transition border-l border-slate-300 " +
+          (s === 'mock' ? "bg-[#144e4b] text-white" : "bg-white text-slate-600 hover:bg-slate-50");
+      }
+      renderCatCounts();
+      updateCategoryProgress();
+      if (typeof renderCategoryDetail === "function") renderCategoryDetail(selectedCat);
+    }
+    function renderCatCounts() {
+      const counts = { vocab: 0, reading: 0, grammar: 0, math: 0 };
+      drillPool().forEach(q => { if (counts[q.cat] !== undefined) counts[q.cat]++; });
+      // 显式写四个 id —— test-wiring 靠静态扫描确认这些数字真的有 JS 在更新
+      document.getElementById('cnt-vocab').innerText = counts.vocab;
+      document.getElementById('cnt-reading').innerText = counts.reading;
+      document.getElementById('cnt-grammar').innerText = counts.grammar;
+      document.getElementById('cnt-math').innerText = counts.math;
+    }
+
     function renderCategoryDetail(catKey) {
       const cat = CATEGORY_MAP[catKey];
-      document.getElementById('detail-panel-title').innerText = `${cat.code} ${cat.title} · College Board 官方二级考点技能细分`;
+      const isMock = (drillSource === 'mock' && catKey !== 'custom');
+      document.getElementById('detail-panel-title').innerText = isMock
+        ? `${cat.code} ${cat.title} · 2026真题（考点为自动推断，非官方标注）`
+        : `${cat.code} ${cat.title} · College Board 官方二级考点技能细分`;
       document.getElementById('current-chosen-label').innerText = `${cat.code} ${cat.title} (全部考点)`;
 
       const grid = document.getElementById('skills-detail-grid');
       grid.innerHTML = '';
+      const pool = drillPool();
 
-      cat.skills.forEach(skName => {
+      // 2026真题没有官方技能标注：按导入时自动推断的 sk 汇总，按题量排
+      const skillList = isMock
+        ? Object.entries(pool.filter(q => q.cat === catKey && q.sk)
+                   .reduce((m, q) => (m[q.sk] = (m[q.sk] || 0) + 1, m), {}))
+            .sort((a, b) => b[1] - a[1]).map(e => e[0])
+        : cat.skills;
+
+      skillList.forEach(skName => {
         const card = document.createElement('div');
-        const qCount = BANK.filter(q => q.cat === catKey && (skName.includes("错题") ? true : q.sk === skName)).length;
-        const skAttempts = attempts.filter(a => a.sk === skName);
+        const qCount = pool.filter(q => q.cat === catKey &&
+          (isMock ? q.sk === skName : (skName.includes("错题") ? true : q.sk === skName))).length;
+        const srcAtt = (attempts || []).filter(a =>
+          drillSource === 'mock' ? String(a.qid || '').startsWith('m26.') : true);
+        const skAttempts = srcAtt.filter(a => a.sk === skName);
         const skAcc = skAttempts.length ? Math.round((skAttempts.filter(a=>a.ok).length / skAttempts.length) * 100) : 75;
 
         card.className = "p-3.5 bg-slate-50 border border-slate-200 rounded-lg hover:border-[#144e4b] hover:bg-white transition cursor-pointer flex flex-col justify-between";
@@ -1490,7 +1944,7 @@
 
     // ================= 发起针对性专项练习 =================
     function launchTargetedDrill() {
-      let pool = BANK.filter(q => q.cat === selectedCat);
+      let pool = drillPool().filter(q => q.cat === selectedCat);
       if (selectedSkill && !selectedSkill.includes("错题")) {
         pool = pool.filter(q => q.sk === selectedSkill);
       }
@@ -1501,7 +1955,11 @@
       const h = document.getElementById('diff-H').checked;
       pool = pool.filter(q => (e && q.df==='E') || (m && q.df==='M') || (h && q.df==='H'));
 
-      if (!pool.length) return alert("当前筛选条件下无题目！请放宽难度或选择其他分类。");
+      if (!pool.length) {
+        return alert(drillSource === 'mock'
+          ? "当前筛选条件下无题目。2026真题没有 Easy 档（难度按模块推断：M1=Medium、M2=Hard），请把 Medium/Hard 勾上。"
+          : "当前筛选条件下无题目！请放宽难度或选择其他分类。");
+      }
 
       // 随机抽取
       const chosen = [...pool].sort(() => Math.random() - 0.5).slice(0, selectedCount);
@@ -1516,9 +1974,10 @@
       }
 
       initRunnerSession({
-        title: `${CATEGORY_MAP[selectedCat].title} 专项强化`,
+        title: `${CATEGORY_MAP[selectedCat].title} 专项强化${drillSource === 'mock' ? ' · 2026真题' : ''}`,
         moduleTag: selectedSkill || "专项练习",
         isMock: false,
+        calcAllowed: drillSource === 'mock' ? selectedCat === 'math' : true,   // 2026题按官方规则：R&W无计算器；官方题库练习保持可用
         questions: chosen,
         timeLimitSec: limitSec,
         answers: chosen.map(() => ({ picked: null, struck: [], flagged: false })),
@@ -1557,6 +2016,8 @@
       if (viewName === "vocab" && typeof renderVocabView === "function") renderVocabView();
       if (viewName === "dashboard" && typeof renderCategoryDetail === "function") renderCategoryDetail(selectedCat);
       if (viewName === "report" && typeof renderReport === "function") renderReport();
+      if (viewName === "mock" && typeof renderMockSets === "function") renderMockSets();
+      if (viewName === "review26" && typeof renderMockReview === "function") renderMockReview();
 
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -1825,11 +2286,12 @@
       }
       if (e.altKey || e.ctrlKey || e.metaKey) return;
 
-      // A/B/C/D 选答案（只对选择题）
+      // A/B/C/D 或 1/2/3/4 选答案（只对选择题）
       const q = activeSession.questions[activeSession.currentIndex];
-      if (q && q.ty !== "spr" && /^[a-dA-D]$/.test(e.key)) {
+      if (q && q.ty !== "spr" && /^[a-dA-D1-4]$/.test(e.key)) {
         e.preventDefault();
-        selectOption(e.key.toUpperCase());
+        const ltr = /[1-4]/.test(e.key) ? "ABCD"[+e.key - 1] : e.key.toUpperCase();
+        selectOption(ltr);
         return;
       }
       // 左右方向键翻题
@@ -2467,6 +2929,14 @@
       session.sid = session.sid || ("s_" + Date.now().toString(36));
       timeLeft = session.timeLimitSec;
       resetPause();                  // 上一场若停在暂停态，别带到这一场
+
+      // 官方标准：R&W 全程没有计算器和公式表。只有 2026 真题模考严格执行，
+      // 普通练习保持可用（练习以弄懂为主）。
+      const calcAllowed = session.calcAllowed !== false;
+      const calcBtn = document.getElementById('btn-desmos');
+      const refBtn = document.getElementById('btn-reference');
+      if (calcBtn) calcBtn.style.display = calcAllowed ? '' : 'none';
+      if (refBtn) refBtn.style.display = calcAllowed ? '' : 'none';
       if (timerT) clearInterval(timerT);
       if (timeLeft > 0) {
         renderTimer();
@@ -2570,6 +3040,14 @@
         optGroup.classList.add('hidden');
         sprBox.classList.remove('hidden');
         document.getElementById('runner-spr-input').value = ans.picked || '';
+        // 小键盘常驻填空题，光标直接落在输入框 —— 开打就行
+        sprPadRender();
+        const pad = document.getElementById('spr-pad');
+        if (pad) pad.classList.remove('hidden');
+        setTimeout(() => {
+          const inp = document.getElementById('runner-spr-input');
+          if (inp) { inp.focus({ preventScroll: true }); inp.setSelectionRange(inp.value.length, inp.value.length); }
+        }, 0);
       } else {
         sprBox.classList.add('hidden');
         optGroup.classList.remove('hidden');
@@ -2617,6 +3095,34 @@
 
     function handleSprInput(v) {
       activeSession.answers[activeSession.currentIndex].picked = v.trim();
+    }
+
+    // 填空小键盘：只给官方允许的字符（数字 . / -），在光标处插入
+    const SPR_PAD_KEYS = [["7","8","9","⌫"],["4","5","6","/"],["1","2","3","-"],["0","",".",""]];
+    function sprPadRender() {
+      const pad = document.getElementById('spr-pad');
+      if (!pad || pad.childElementCount) return;
+      pad.innerHTML = SPR_PAD_KEYS.flat().map(k =>
+        k === "" ? '<span></span>' :
+        `<button type="button" onclick="sprKey(${JSON.stringify(k)})"
+          class="spr-key py-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-200
+                 font-mono text-sm font-bold transition ${k==='⌫'?'text-rose-600':''}">${k}</button>`
+      ).join("");
+    }
+    function sprKey(k) {
+      const i = document.getElementById('runner-spr-input');
+      if (!i) return;
+      if (k === "⌫") {
+        i.value = i.value.slice(0, Math.max(0, i.selectionStart - 1)) +
+                  i.value.slice(i.selectionEnd);
+        const p = Math.max(0, (i.selectionStart || 1) - 1);
+        i.focus(); i.setSelectionRange(p, p);
+      } else {
+        const p = i.selectionStart ?? i.value.length;
+        i.value = i.value.slice(0, p) + k + i.value.slice(i.selectionEnd ?? p);
+        i.focus(); i.setSelectionRange(p + 1, p + 1);
+      }
+      handleSprInput(i.value);
     }
 
     function toggleRunnerFlag() {
@@ -3011,10 +3517,16 @@
       Store.clearSession();
 
       initBank();
-      // 以前这里弹个 alert 就跳回首页，复盘整个是空的。现在进复盘页。
+      // 2026 模考连场：Module 1 交完先进过渡屏，Module 2 从那里接上
       const finished = activeSession;
-      openDebrief(finished, okCount);
+      const nextModule = activeSession && activeSession.mockNext;
       activeSession = null;
+      if (nextModule && nextModule.questions && nextModule.questions.length) {
+        nextModule._debrief = { session: finished, okCount: okCount };
+        showMockBreak(nextModule);
+      } else {
+        openDebrief(finished, okCount);
+      }
     }
 
     function quitRunnerConfirm() {
@@ -3283,6 +3795,10 @@
                          .replace(/π/g, "PI").replace(/√/g, "sqrt")
                          // √9 这样不带括号的，补上括号；√(9) 不受影响
                          .replace(/sqrt\s*(\d+(?:\.\d+)?)/g, "sqrt($1)");
+      // Ans 引用上次结果（多步计算：先算一半，再 Ans*2）。
+      // typeof 兜底是为了 calcEval 能被单独拎出来测（tools/test-calc-v2.cjs）
+      const _lastAns = (typeof calcLastAns !== "undefined" && isFinite(calcLastAns)) ? calcLastAns : 0;
+      s = s.replace(/\bAns\b/g, "(" + String(_lastAns) + ")");
       if (!/^[0-9+\-*/^().,%\sA-Za-z]*$/.test(s)) throw new Error("含不支持的字符");
       // 白名单一次扫描替换完。先 ln→Math.log 再 log→Math.log10 会把自己的结果又改一遍。
       const FN = { sqrt:"Math.sqrt", abs:"Math.abs", sin:"Math.sin", cos:"Math.cos", tan:"Math.tan",
@@ -3302,9 +3818,15 @@
     }
 
     let calcMode = "basic";   // 默认本地，不是 desmos —— 否则断网就没计算器
+    let calcLastAns = 0;      // 上次结果，供 Ans 引用
+    let calcHist = [];        // {expr, val} 最近 30 条
+    let calcHistIdx = -1;     // ↑↓ 正在回溯的位置，-1 = 不在回溯
     const CALC_KEYS = [
-      ["7","8","9","(",")"], ["4","5","6","/","^"], ["1","2","3","*","√"],
-      ["0",".","π","-","+"], ["C","⌫","%","ln","="]
+      ["7","8","9","(",")","C"],
+      ["4","5","6","/","^","⌫"],
+      ["1","2","3","*","√","%"],
+      ["0",".","π","-","+","Ans"],
+      ["ln","log","sin","cos","tan","="],
     ];
     function calcRenderPad() {
       const pad = document.getElementById('calc-pad');
@@ -3312,6 +3834,8 @@
       pad.innerHTML = CALC_KEYS.flat().map(k => {
         const accent = k === "=" ? "bg-emerald-600 text-white hover:bg-emerald-700"
                      : /^[0-9.]$/.test(k) ? "bg-white hover:bg-slate-100"
+                     : k === "C" ? "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                     : k === "Ans" ? "bg-sky-50 text-sky-700 hover:bg-sky-100"
                      : "bg-slate-100 hover:bg-slate-200";
         return `<button type="button" onclick="calcKey(${JSON.stringify(k)})"
                  class="py-2.5 rounded-lg border border-slate-200 font-mono ${accent} transition">${k}</button>`;
@@ -3330,6 +3854,20 @@
       else i.value += k;
       i.focus(); calcLive();
     }
+    // 回车求值；↑↓ 在历史算式里回溯（改一个字符就退出回溯态）
+    function calcKeydown(e) {
+      const i = document.getElementById('calc-expr');
+      if (e.key === "Enter") { e.preventDefault(); calcRun(true); return; }
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        if (!calcHist.length) return;
+        e.preventDefault();
+        calcHistIdx = e.key === "ArrowUp"
+          ? Math.min(calcHistIdx + 1, calcHist.length - 1)
+          : Math.max(calcHistIdx - 1, -1);
+        i.value = calcHistIdx < 0 ? "" : calcHist[calcHist.length - 1 - calcHistIdx].expr;
+        calcLive();
+      }
+    }
     function calcLive() { calcRun(false); }
     function calcRun(explicit) {
       const i = document.getElementById('calc-expr');
@@ -3339,12 +3877,30 @@
       const src = i.value.trim();
       if (!src) { ansEl.textContent = ""; errEl.textContent = ""; return; }
       try {
-        ansEl.textContent = String(+calcEval(src).toPrecision(12));
+        const v = +calcEval(src).toPrecision(12);
+        ansEl.textContent = String(v);
         errEl.textContent = "";
+        if (explicit) {
+          calcLastAns = v;
+          calcHist.push({ expr: src, val: v });
+          if (calcHist.length > 30) calcHist.shift();
+          calcHistIdx = -1;
+          calcRenderTape();
+        }
       } catch (e) {
         ansEl.textContent = "";
         errEl.textContent = explicit ? (e.message || "算不了") : "";  // 边打边算先不报错
       }
+    }
+    function calcRenderTape() {
+      const tape = document.getElementById('calc-tape');
+      if (!tape) return;
+      if (!calcHist.length) { tape.innerHTML = ""; return; }
+      tape.innerHTML = calcHist.slice(-4).reverse().map(h =>
+        `<div class="text-right cursor-pointer hover:text-[#144e4b] truncate"
+              title="点击调回这条算式" onclick="calcSet(${JSON.stringify(h.expr).replace(/"/g,'&quot;')})">
+           ${h.expr} <span class="text-slate-300">=</span> <span class="text-slate-600 font-semibold">${h.val}</span>
+         </div>`).join("");
     }
     function setCalcMode(m) {
       calcMode = m;
