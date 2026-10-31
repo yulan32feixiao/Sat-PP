@@ -809,6 +809,33 @@
     </div>
   </div>
 
+  <!-- ================= 随手记（备忘录式侧边栏，任何页面随时记） ================= -->
+  <button id="fab-note" onclick="toggleFreeDrawer()" title="随手记"
+    class="hidden fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-[#144e4b] text-white shadow-lg hover:bg-[#0e3b38] hover:scale-105 transition flex items-center justify-center">
+    <i class="fa-solid fa-pen text-lg"></i>
+  </button>
+  <div id="drawer-note" class="hidden fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] bg-[#f6f7f3] shadow-2xl flex flex-col border-l border-slate-200">
+    <div class="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between">
+      <h3 class="font-bold text-slate-900 text-sm"><i class="fa-solid fa-pen-to-square mr-1.5 text-[#144e4b]"></i>随手记</h3>
+      <button onclick="toggleFreeDrawer()" class="text-slate-400 hover:text-slate-700 text-lg">&times;</button>
+    </div>
+    <div class="p-4 bg-white border-b border-slate-200">
+      <textarea id="fw-input" rows="4" placeholder="随时记：单词、语法点、句型、错题思路…支持整段粘贴（像备忘录一样，AI 之后帮你归类）"
+        class="w-full border border-slate-300 rounded-lg p-2.5 text-xs leading-relaxed focus:border-[#144e4b] focus:outline-hidden"
+        onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();saveFreeNote();}"></textarea>
+      <div class="flex items-center justify-between mt-2">
+        <span class="text-[10px] text-slate-400">Ctrl+Enter 快速保存 · 自动打标签</span>
+        <div class="flex gap-1.5">
+          <button onclick="runFreewriteSummary()" class="px-2.5 py-1.5 border border-violet-300 bg-violet-50 text-violet-700 rounded-lg text-[11px] font-bold hover:bg-violet-100 transition">
+            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>AI总结</button>
+          <button onclick="saveFreeNote()" class="px-3 py-1.5 bg-[#144e4b] text-white rounded-lg text-[11px] font-bold hover:bg-[#0e3b38] transition">保存</button>
+        </div>
+      </div>
+    </div>
+    <div id="fw-summary" class="p-4"></div>
+    <div id="fw-list" class="flex-1 overflow-y-auto px-4 pb-6 space-y-2.5"></div>
+  </div>
+
   <!-- ================= AI 分析与诊断浮层 ================= -->
   <div id="modal-ai-result" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
@@ -1343,6 +1370,8 @@
         coachDone:  PREFIX + "coach_done",    // {'YYYY-M-D': {taskKey: true}}
         coachPlan:  PREFIX + "coach_plan",    // {generatedAt, weeks:[...], done:{}}
         coachReport: PREFIX + "coach_report", // 最近一次AI弱点报告
+        freewrite:  PREFIX + "freewrite",     // [{id, ts, text, tags:[], summarized}]
+        freewriteSum: PREFIX + "freewrite_sum", // 最近一次AI笔记总结
       };
 
       let warned = false;
@@ -1383,6 +1412,10 @@
         saveCoachPlan(p)   { return put(K.coachPlan, p); },
         coachReport()      { return raw(K.coachReport, null); },
         saveCoachReport(r) { return put(K.coachReport, r); },
+        freewrite()        { return raw(K.freewrite, []); },
+        saveFreewrite(list){ return put(K.freewrite, list); },
+        freewriteSum()     { return raw(K.freewriteSum, null); },
+        saveFreewriteSum(s){ return put(K.freewriteSum, s); },
         clearSession()     { try { localStorage.removeItem(K.session); } catch (e) {} },
 
         /* 高亮按「场次 + 题目」存：本场翻来翻去都在、刷新还在，
@@ -2702,6 +2735,111 @@ ${lines || "（暂无考点数据）"}`;
         </div>`;
     }
 
+    /* ===== 随手记（备忘录式笔记：随时记 → 规则自动打标签 → AI归类总结） ===== */
+    // 纯函数：按关键词给笔记打标签（近似归类，界面标注"自动推断"）
+    function freewriteClassify(text) {
+      const s = (text || "").toLowerCase();
+      const tags = new Set();
+      if (/[\u4e00-\u9fff]/.test(text) && /\b[a-z]{2,}\b/i.test(s)) tags.add("词汇");
+      if (/(语法|grammar|从句|时态|标点|主谓|transition|concession|clause|tense|punctuation|modifier|parallel|dangling)/i.test(s)) tags.add("语法");
+      if (/(阅读|reading|主旨|推断|evidence|main idea|inference|purpose|central idea|craft)/i.test(s)) tags.add("阅读");
+      if (/(数学|math|方程|几何|三角|函数|slope|fraction|percent|circle|polynomial|inequal|radical|exponent)/i.test(s)) tags.add("数学");
+      if (/(句型|idiom|phrase|搭配|straddle|collocation|表达)/i.test(s)) tags.add("句型");
+      if (!tags.size) tags.add("杂记");
+      return [...tags];
+    }
+
+    function toggleFreeDrawer() {
+      const drawer = document.getElementById("drawer-note");
+      const opening = drawer.classList.contains("hidden");
+      drawer.classList.toggle("hidden", !opening);
+      if (opening) { renderFreewrite(); document.getElementById("fw-input").focus(); }
+    }
+
+    function saveFreeNote() {
+      const el = document.getElementById("fw-input");
+      const text = el.value.trim();
+      if (!text) return;
+      const list = Store.freewrite();
+      list.unshift({ id: "fw" + Date.now().toString(36), ts: Date.now(),
+                     text, tags: freewriteClassify(text), summarized: false });
+      Store.saveFreewrite(list);
+      el.value = "";
+      renderFreewrite();
+    }
+
+    function delFreeNote(id) {
+      Store.saveFreewrite(Store.freewrite().filter(n => n.id !== id));
+      renderFreewrite();
+    }
+
+    const FW_TAG_STYLE = {
+      "词汇": "bg-amber-50 text-amber-700 border-amber-200",
+      "语法": "bg-sky-50 text-sky-700 border-sky-200",
+      "阅读": "bg-emerald-50 text-emerald-700 border-emerald-200",
+      "数学": "bg-violet-50 text-violet-700 border-violet-200",
+      "句型": "bg-pink-50 text-pink-700 border-pink-200",
+      "杂记": "bg-slate-100 text-slate-600 border-slate-200",
+    };
+
+    function renderFreewrite() {
+      const list = Store.freewrite();
+      const sum = Store.freewriteSum();
+      const sumBox = document.getElementById("fw-summary");
+      if (sumBox) {
+        sumBox.innerHTML = sum
+          ? `<div class="bg-violet-50 border border-violet-200 rounded-xl p-3 text-xs text-slate-700 leading-relaxed">
+               <div class="flex items-center justify-between mb-1">
+                 <b class="text-violet-700"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>上次AI总结</b>
+                 <span class="text-[10px] text-slate-400">${new Date(sum.generatedAt).toLocaleString()} · ${sum.count}条</span>
+               </div>
+               ${sum.text.replace(/###/g, "<b>").replace(/\n/g, "<br>")}
+             </div>`
+          : "";
+      }
+      const listBox = document.getElementById("fw-list");
+      if (!list.length) {
+        listBox.innerHTML = '<p class="text-xs text-slate-400 text-center pt-6">还没有记录。想到什么记什么 —— 单词、语法、句型、错题思路都行。</p>';
+        return;
+      }
+      listBox.innerHTML = list.map(n => `
+        <div class="bg-white border border-slate-200 rounded-xl p-3">
+          <div class="flex items-center justify-between mb-1">
+            <div class="flex gap-1 flex-wrap">
+              ${n.tags.map(t => `<span class="text-[10px] px-1.5 py-0.5 rounded border font-bold ${FW_TAG_STYLE[t] || FW_TAG_STYLE["杂记"]}">${t}</span>`).join("")}
+              ${n.summarized ? "" : '<span class="text-[10px] text-violet-400 font-bold">新</span>'}
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] text-slate-300">${new Date(n.ts).toLocaleDateString()}</span>
+              <button onclick="delFreeNote('${n.id}')" class="text-slate-300 hover:text-rose-500 text-[11px]"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+          </div>
+          <p class="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">${n.text.replace(/</g, "&lt;")}</p>
+        </div>`).join("");
+    }
+
+    async function runFreewriteSummary() {
+      const pending = Store.freewrite().filter(n => !n.summarized);
+      if (!pending.length) return toastMini("没有未总结的新笔记");
+      if (!llmChain().length) { openAiSettings(); return; }
+      const box = document.getElementById("fw-summary");
+      box.innerHTML = '<div class="bg-violet-50 border border-violet-200 rounded-xl p-3 text-xs text-slate-500"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>AI 正在归类整理…</div>';
+      try {
+        const content = pending.map(n => `[${n.tags.join("/")}] ${n.text.slice(0, 400)}`).join("\n---\n");
+        const reply = await callDeepSeek([{
+          role: "user",
+          content: `以下是我练习 Digital SAT 时随手记的 ${pending.length} 条笔记（标签是我按关键词自动打的，可能有误）：\n\n${content}\n\n` +
+            `请输出 Markdown：\n### 归类整理\n（按主题重新分组——主题不必沿用我的标签，比如同义词条目合并成一组、语法规则归语法）\n### 必背要点\n（3-6条，浓缩成可直接背的条目）\n### 一个建议\n`,
+        }], { system: "你是 SAT 学习笔记整理助手。只基于笔记内容整理，不编造。中文输出，英文词条保留原文。", maxTokens: 1800, temperature: 0.4 });
+        Store.saveFreewriteSum({ generatedAt: Date.now(), text: reply, count: pending.length });
+        Store.saveFreewrite(Store.freewrite().map(n => n.summarized ? n : Object.assign({}, n, { summarized: true })));
+        renderFreewrite();
+        toastMini(`已总结 ${pending.length} 条笔记`);
+      } catch (e) {
+        box.innerHTML = `<div class="bg-white border border-rose-200 rounded-xl p-3 text-xs text-rose-600">总结失败: ${e.message}</div>`;
+      }
+    }
+
     // ================= 视图路由导航 (VIEW ROUTER) =================
     function switchView(viewName) {
       document.querySelectorAll(".view-panel").forEach(el => el.classList.add("hidden"));
@@ -2719,12 +2857,15 @@ ${lines || "（暂无考点数据）"}`;
         activeBtn.classList.add("text-emerald-800", "bg-emerald-50/80");
       }
 
-      // 做题界面时隐藏顶栏，退出时恢复
+      // 做题界面时隐藏顶栏，退出时恢复；随手记FAB同理（做题时不打扰）
       const header = document.getElementById("global-header");
       if (header) {
         if (viewName === "runner") header.classList.add("hidden");
         else header.classList.remove("hidden");
       }
+      const fab = document.getElementById("fab-note");
+      if (fab) fab.classList.toggle("hidden",
+        !["dashboard", "coach", "mock", "review26", "mistakes", "vocab", "report"].includes(viewName));
 
       // 视图特定渲染
       if (viewName === "coach" && typeof renderCoach === "function") renderCoach();
@@ -3031,6 +3172,12 @@ ${lines || "（暂无考点数据）"}`;
 
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
+      // 随手记抽屉先关（它在最上层）
+      const drawer = document.getElementById("drawer-note");
+      if (drawer && !drawer.classList.contains("hidden")) {
+        drawer.classList.add("hidden");
+        return;
+      }
       const runner = document.getElementById('view-runner');
       if (!runner || runner.classList.contains('hidden')) return;
       // 有弹窗开着时 Esc 该关弹窗，不该暂停
@@ -5156,6 +5303,8 @@ ${questionText}
     window.addEventListener('DOMContentLoaded', () => {
       initBank();
       loadFullBank();
+      const fab = document.getElementById('fab-note');      // 首屏直接可见随手记入口
+      if (fab) fab.classList.remove('hidden');
 
       // 自动恢复未完成会话
       const cached = Store.loadSession();
