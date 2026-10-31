@@ -83,6 +83,9 @@
         <button onclick="switchView('dashboard')" id="tab-dashboard" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-semibold text-emerald-800 bg-emerald-50/80">
           <i class="fa-solid fa-layer-group mr-1.5"></i>专项练习
         </button>
+        <button onclick="switchView('coach')" id="tab-coach" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100">
+          <i class="fa-solid fa-compass mr-1.5"></i>AI教练
+        </button>
         <button onclick="switchView('mock')" id="tab-mock" class="nav-btn px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100">
           <i class="fa-solid fa-laptop-code mr-1.5"></i>全真模考
         </button>
@@ -407,6 +410,45 @@
         <p class="text-xs sm:text-sm text-slate-500 mt-1">只统计 2026 真题模考的作答：每套完成度、正确率、错题重做。与官方题库的练习记录互不掺和。</p>
       </div>
       <div id="review26-body" class="mt-6"></div>
+    </section>
+
+    <!-- ----------------- 视图: AI教练 (COACH) ----------------- -->
+    <section id="view-coach" class="view-panel hidden max-w-7xl mx-auto px-4 py-8 w-full">
+      <div class="pb-6 border-b border-slate-200 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-900 tracking-tight">AI 教练 · 自学主入口</h1>
+          <p class="text-xs sm:text-sm text-slate-500 mt-1">今日练什么、刷多少由可解释的规则算出；AI负责弱点诊断、考点讲解和周计划。</p>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <label class="text-slate-400 font-semibold">每日时长</label>
+          <input id="coach-minutes" type="number" min="10" max="180" class="w-16 px-2 py-1.5 border border-slate-300 rounded-lg text-sm font-bold" />
+          <span class="text-slate-400">分钟</span>
+          <label class="text-slate-400 font-semibold ml-2">考试日期</label>
+          <input id="coach-examdate" type="date" class="px-2 py-1.5 border border-slate-300 rounded-lg text-sm" />
+          <button onclick="saveCoachPrefs()" class="px-3 py-1.5 bg-[#144e4b] text-white rounded-lg font-bold hover:bg-[#0e3b38] transition">保存</button>
+        </div>
+      </div>
+
+      <!-- 今日任务 -->
+      <div class="mt-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-bold text-slate-900"><i class="fa-solid fa-calendar-check text-[#144e4b] mr-1.5"></i>今日任务</h2>
+          <span class="text-[11px] text-slate-400" id="coach-today-meta"></span>
+        </div>
+        <div id="coach-today" class="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3"></div>
+      </div>
+
+      <!-- 弱点排行 -->
+      <div class="mt-8">
+        <h2 class="text-base font-bold text-slate-900"><i class="fa-solid fa-ranking-star text-amber-500 mr-1.5"></i>弱点排行（真实作答统计）</h2>
+        <div id="coach-weak" class="mt-3 bg-white border border-slate-200 rounded-xl p-4"></div>
+      </div>
+
+      <!-- AI区 -->
+      <div class="mt-8">
+        <h2 class="text-base font-bold text-slate-900"><i class="fa-solid fa-wand-magic-sparkles text-violet-500 mr-1.5"></i>AI 能力</h2>
+        <div id="coach-ai" class="mt-3"></div>
+      </div>
     </section>
 
     <!-- ----------------- 视图 3: 错题本 (MISTAKES) ----------------- -->
@@ -1241,6 +1283,8 @@
         aiKey:     PREFIX + "deepseek_key",
         aiModel:   PREFIX + "deepseek_model",
         auth:      PREFIX + "session",
+        coachPrefs: PREFIX + "coach_prefs",   // {dailyMinutes, examDate}
+        coachDone:  PREFIX + "coach_done",    // {'YYYY-M-D': {taskKey: true}}
       };
 
       let warned = false;
@@ -1273,6 +1317,10 @@
         saveVocab(list)    { return put(K.vocab, (list || []).slice(-2000)); },
         saveSession(s)     { return put(K.session, s); },
         loadSession()      { return raw(K.session, null); },
+        coachPrefs()       { return raw(K.coachPrefs, null); },
+        saveCoachPrefs(p)  { return put(K.coachPrefs, p); },
+        coachDone()        { return raw(K.coachDone, null); },
+        saveCoachDone(d)   { return put(K.coachDone, d); },
         clearSession()     { try { localStorage.removeItem(K.session); } catch (e) {} },
 
         /* 高亮按「场次 + 题目」存：本场翻来翻去都在、刷新还在，
@@ -2096,6 +2144,162 @@
     }
     /* ===== COACH-CORE END ===== */
 
+    /* ===== AI教练 UI =====
+       Step2（当前）：今日任务+弱点排行，纯规则无AI。
+       Step4：AI弱点报告/考点讲解/周计划 接线进 #coach-ai。 */
+    const DAY_MS_COACH = 86400000;
+    function coachPrefs() {
+      return Store.coachPrefs() || {};
+    }
+    function saveCoachPrefs() {
+      const mins = Math.max(10, Math.min(180, +document.getElementById("coach-minutes").value || 40));
+      const exam = document.getElementById("coach-examdate").value || "";
+      Store.saveCoachPrefs({ dailyMinutes: mins, examDate: exam });
+      toastMini("教练偏好已保存");
+      renderCoach();
+    }
+    function coachDoneMap() {
+      return Store.coachDone() || {};
+    }
+    function coachYmd(now) {
+      const d = new Date(now || Date.now());
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
+             "-" + String(d.getDate()).padStart(2, "0");
+    }
+    function markTaskDone(key) {
+      const m = coachDoneMap();
+      const day = coachYmd();
+      m[day] = m[day] || {};
+      m[day][key] = true;
+      Store.saveCoachDone(m);
+    }
+    function launchCoachRedo(n) {
+      const now = Date.now();
+      const qs = Object.values(mistakes || {})
+        .filter(m => !m.mastered && (m.due || 0) <= now)
+        .sort((a, b) => (a.due || 0) - (b.due || 0))
+        .slice(0, n || 15)
+        .map(m => BYID[m.qid]).filter(Boolean);
+      if (!qs.length) return alert("当前没有到期的错题。");
+      initRunnerSession({
+        title: "今日任务 · 到期错题重练",
+        moduleTag: `${qs.length} 题 · 自主配速`,
+        isMock: false, calcAllowed: true,
+        questions: qs, timeLimitSec: 0,
+        answers: qs.map(() => ({ picked: null, struck: [], flagged: false })),
+        currentIndex: 0, startTime: Date.now(),
+      });
+    }
+    function launchCoachDrill(cat, sk, n) {
+      let pool = drillPool().filter(q => q.cat === cat);
+      if (sk) pool = pool.filter(q => q.sk === sk);
+      if (!pool.length) return alert("该考点在当前题库来源里暂无题目，切个题库来源试试。");
+      const chosen = [...pool].sort(() => Math.random() - 0.5).slice(0, n || 10);
+      const limitSec = selectedTimeMode === "none" ? 0 :
+        chosen.reduce((s, q) => s + (q.sec === 2 ? 95 : 71), 0);
+      initRunnerSession({
+        title: "今日任务 · " + (sk || (cat === "math" ? "数学" : cat) || "混合") + "专项",
+        moduleTag: `${chosen.length} 题 · ${limitSec ? Math.round(limitSec / 60) + " 分钟" : "自主配速"}`,
+        isMock: false,
+        calcAllowed: drillSource !== "bank" ? cat === "math" : true,
+        questions: chosen, timeLimitSec: limitSec,
+        answers: chosen.map(() => ({ picked: null, struck: [], flagged: false })),
+        currentIndex: 0, startTime: Date.now(),
+      });
+    }
+    function startCoachTask(key) {
+      markTaskDone(key);
+      const plan = coachTodayPlan(coachAggregate(attempts, mistakes), coachPrefs());
+      const t = plan.tasks.find(x => x.key === key);
+      if (!t) return;
+      if (t.type === "redo") launchCoachRedo(t.n);
+      else launchCoachDrill(t.cat, t.sk, t.n);
+    }
+    function renderCoach() {
+      const prefs = coachPrefs();
+      const minsEl = document.getElementById("coach-minutes");
+      const dateEl = document.getElementById("coach-examdate");
+      if (minsEl && !minsEl.value) minsEl.value = prefs.dailyMinutes || 40;
+      if (dateEl && !dateEl.value && prefs.examDate) dateEl.value = prefs.examDate;
+
+      const agg = coachAggregate(attempts, mistakes);
+      const plan = coachTodayPlan(agg, prefs);
+      const doneMap = coachDoneMap()[coachYmd()] || {};
+
+      // 今日任务卡片
+      const todayBox = document.getElementById("coach-today");
+      document.getElementById("coach-today-meta").innerText =
+        `预计 ${plan.estMinutes} 分钟 / 每日 ${plan.dailyMinutes} 分钟` +
+        (prefs.examDate ? ` · 距考试 ${Math.max(0, Math.ceil((new Date(prefs.examDate) - Date.now()) / DAY_MS_COACH))} 天` : " · 不限期");
+      if (!agg.totals.n) {
+        todayBox.innerHTML = `
+          <div class="lg:col-span-3 bg-white border border-slate-200 rounded-xl p-8 text-center">
+            <i class="fa-regular fa-hand-pointer text-3xl text-slate-200"></i>
+            <p class="mt-3 text-slate-700 font-semibold">还没有作答记录 —— 先去做一组题，教练才有数据可分析</p>
+            <button onclick="switchView('dashboard')" class="mt-4 px-4 py-2 bg-[#144e4b] text-white rounded-lg text-sm font-semibold hover:bg-[#0e3b38]">去做一组题</button>
+          </div>`;
+      } else {
+        todayBox.innerHTML = plan.tasks.map(t => {
+          const done = doneMap[t.key];
+          return `
+          <div class="bg-white border ${done ? "border-emerald-300 bg-emerald-50/40" : "border-slate-200"} rounded-xl p-4 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-bold text-slate-900">${t.label}</span>
+              ${done ? '<i class="fa-solid fa-circle-check text-emerald-600"></i>' : `<span class="text-xs font-mono font-bold text-[#144e4b]">${t.n} 题</span>`}
+            </div>
+            <p class="text-[11px] text-slate-500 mt-2 leading-relaxed flex-1">为什么：${t.why}</p>
+            ${done ? '<p class="text-[11px] text-emerald-700 font-semibold mt-2">今日已完成</p>' :
+              `<button onclick="startCoachTask('${t.key}')" class="mt-3 py-2 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-xs font-bold transition">开始（${t.n} 题）</button>`}
+          </div>`;
+        }).join("") + `
+          <div class="lg:col-span-3 text-[11px] text-slate-400">任务由规则实时计算：到期错题优先，再补最弱考点；点击开始即记录完成。练完后回本页数据自动更新。</div>`;
+      }
+
+      // 弱点排行
+      const weakBox = document.getElementById("coach-weak");
+      if (!agg.skills.length) {
+        weakBox.innerHTML = '<p class="text-sm text-slate-400">暂无考点数据。</p>';
+      } else {
+        const CN = { vocab: "词汇", reading: "阅读", grammar: "语法", math: "数学", custom: "个人" };
+        weakBox.innerHTML = `
+          <table class="w-full text-xs">
+            <thead><tr class="text-slate-400 text-left">
+              <th class="py-1.5 font-bold">考点</th><th class="font-bold">专项</th>
+              <th class="font-bold">题数</th><th class="font-bold w-40">正确率</th>
+              <th class="font-bold">平均用时</th><th class="font-bold">复发</th><th class="font-bold">近7天</th>
+            </tr></thead>
+            <tbody>${agg.skills.slice(0, 10).map(s => {
+              const tone = s.acc >= 80 ? "bg-emerald-500" : s.acc >= 60 ? "bg-amber-500" : "bg-rose-500";
+              return `<tr class="border-t border-slate-100">
+                <td class="py-2 font-semibold text-slate-800">${s.sk}</td>
+                <td class="text-slate-500">${CN[s.cat] || s.cat}</td>
+                <td class="font-mono">${s.n}</td>
+                <td><div class="flex items-center gap-2"><div class="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div class="h-full ${tone}" style="width:${s.acc}%"></div></div>
+                  <span class="font-mono w-9 text-right">${s.acc}%</span></div></td>
+                <td class="font-mono text-slate-500">${s.avgMs ? Math.round(s.avgMs / 1000) + "s" : "—"}</td>
+                <td class="font-mono ${s.lapses ? "text-rose-600 font-bold" : "text-slate-300"}">${s.lapses || "—"}</td>
+                <td class="font-mono text-slate-500">${s.recent7.n ? s.recent7.ok + "/" + s.recent7.n : "—"}</td>
+              </tr>`;
+            }).join("")}</tbody>
+          </table>
+          <p class="text-[11px] text-slate-400 mt-2">按正确率升序排列。复发=该考点错题退回第1盒的次数；近7天=近一周作答。</p>`;
+      }
+
+      // AI区（Step4 接线）
+      const aiBox = document.getElementById("coach-ai");
+      const hasKey = !!Store.aiKey();
+      aiBox.innerHTML = hasKey
+        ? `<div class="bg-white border border-violet-200 rounded-xl p-4 text-sm text-slate-600">
+             <i class="fa-solid fa-circle-check text-violet-500 mr-1.5"></i>DeepSeek 已配置。AI 弱点报告 / 考点讲解 / 周计划功能接线中，下一步上线。
+           </div>`
+        : `<div class="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
+             <i class="fa-solid fa-plug text-slate-300 mr-1.5"></i>未配置 DeepSeek API Key —— 今日任务和弱点排行不依赖 AI，已可正常使用。
+             配置后这里会提供：AI 弱点报告、考点讲解、周计划。
+             <button onclick="openAiSettings()" class="ml-2 px-2.5 py-1 border border-emerald-300 bg-emerald-50 text-[#144e4b] rounded text-xs font-bold hover:bg-emerald-100">去配置</button>
+           </div>`;
+    }
+
     // ================= 视图路由导航 (VIEW ROUTER) =================
     function switchView(viewName) {
       document.querySelectorAll(".view-panel").forEach(el => el.classList.add("hidden"));
@@ -2121,6 +2325,7 @@
       }
 
       // 视图特定渲染
+      if (viewName === "coach" && typeof renderCoach === "function") renderCoach();
       if (viewName === "mistakes" && typeof renderMistakesView === "function") renderMistakesView();
       if (viewName === "vocab" && typeof renderVocabView === "function") renderVocabView();
       if (viewName === "dashboard" && typeof renderCategoryDetail === "function") renderCategoryDetail(selectedCat);
