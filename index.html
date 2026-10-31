@@ -419,23 +419,35 @@
           <h1 class="text-2xl font-bold text-slate-900 tracking-tight">AI 教练 · 自学主入口</h1>
           <p class="text-xs sm:text-sm text-slate-500 mt-1">今日练什么、刷多少由可解释的规则算出；AI负责弱点诊断、考点讲解和周计划。</p>
         </div>
-        <div class="flex items-center gap-2 text-xs">
+        <div class="flex items-center gap-2 text-xs flex-wrap">
           <label class="text-slate-400 font-semibold">每日时长</label>
-          <input id="coach-minutes" type="number" min="10" max="180" class="w-16 px-2 py-1.5 border border-slate-300 rounded-lg text-sm font-bold" />
+          <input id="coach-minutes" type="number" min="10" max="180" class="w-14 px-2 py-1.5 border border-slate-300 rounded-lg text-sm font-bold" />
           <span class="text-slate-400">分钟</span>
           <label class="text-slate-400 font-semibold ml-2">考试日期</label>
           <input id="coach-examdate" type="date" class="px-2 py-1.5 border border-slate-300 rounded-lg text-sm" />
+          <label class="text-slate-400 font-semibold ml-2">当前分</label>
+          <input id="coach-score-now" type="number" min="400" max="1600" step="10" placeholder="?" class="w-16 px-2 py-1.5 border border-slate-300 rounded-lg text-sm" />
+          <label class="text-slate-400 font-semibold">目标分</label>
+          <input id="coach-score-goal" type="number" min="400" max="1600" step="10" placeholder="?" class="w-16 px-2 py-1.5 border border-slate-300 rounded-lg text-sm" />
           <button onclick="saveCoachPrefs()" class="px-3 py-1.5 bg-[#144e4b] text-white rounded-lg font-bold hover:bg-[#0e3b38] transition">保存</button>
         </div>
       </div>
 
-      <!-- 今日任务 -->
-      <div class="mt-6">
-        <div class="flex items-center justify-between">
-          <h2 class="text-base font-bold text-slate-900"><i class="fa-solid fa-calendar-check text-[#144e4b] mr-1.5"></i>今日任务</h2>
-          <span class="text-[11px] text-slate-400" id="coach-today-meta"></span>
+      <!-- 六边形能力图 + 今日任务 -->
+      <div class="mt-6 grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 lg:col-span-2">
+          <h2 class="text-sm font-bold text-slate-900"><i class="fa-solid fa-shapes text-[#144e4b] mr-1.5"></i>能力六边形
+            <span class="text-[11px] text-slate-400 font-normal ml-1">虚线=目标线85%</span></h2>
+          <div id="coach-radar" class="flex justify-center mt-1"></div>
+          <p class="text-[11px] text-slate-400 leading-relaxed">四大专项=真实正确率；速度=按官方配速(阅71s/数95s)完成的占比；近期=近7天正确率。无数据的维度落在圆心，是"还没练"而不是"很差"。</p>
         </div>
-        <div id="coach-today" class="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3"></div>
+        <div class="lg:col-span-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-base font-bold text-slate-900"><i class="fa-solid fa-calendar-check text-[#144e4b] mr-1.5"></i>今日任务</h2>
+            <span class="text-[11px] text-slate-400" id="coach-today-meta"></span>
+          </div>
+          <div id="coach-today" class="mt-3 grid grid-cols-1 gap-3"></div>
+        </div>
       </div>
 
       <!-- 弱点排行 -->
@@ -2095,17 +2107,27 @@
       const totals = { n: 0, ok: 0 };
       const skMap = {};
       const quad = { slowRight: 0, fastWrong: 0, slowWrong: 0, fastRight: 0 };
-      let dueCount = 0;
+      const speed = { ok: 0, allN: 0 };
+      const recent = { n: 0, ok: 0 };
+      let dueCount = 0, lapsesTotal = 0;
       Object.values(mistakes || {}).forEach(m => {
         if (m && !m.mastered && (m.due || 0) <= now) dueCount++;
+        if (m && m.lapses) lapsesTotal += m.lapses;
       });
       (attempts || []).forEach(a => {
         if (!a) return;
         totals.n++;
         if (a.ok) totals.ok++;
-        const slow = (a.ms || 0) > (a.sec === 2 ? 95000 : 71000);
+        const pacing = a.sec === 2 ? 95000 : 71000;
+        if ((a.ms || 0) > 0 && (a.ms || 0) <= pacing) speed.n++;
+        if (a.ms || 0) speed.allN++;
+        const slow = (a.ms || 0) > pacing;
         if (a.ok) quad[slow ? "slowRight" : "fastRight"]++;
         else quad[slow ? "slowWrong" : "fastWrong"]++;
+        if ((a.ts || 0) >= weekAgo) {
+          recent.n++;
+          if (a.ok) recent.ok++;
+        }
         const key = (a.cat || "other") + "|" + (a.sk || "未归类");
         const s = skMap[key] = skMap[key] ||
           { cat: a.cat || "other", sk: a.sk || "未归类", n: 0, ok: 0, ms: 0,
@@ -2128,6 +2150,27 @@
         totals: { n: totals.n, ok: totals.ok,
                   acc: totals.n ? Math.round(totals.ok / totals.n * 100) : 0 },
         skills, dueCount, quad, generatedAt: now,
+        speed: { ok: speed.ok, n: speed.allN,
+                 pct: speed.allN ? Math.round(speed.ok / speed.allN * 100) : 0 },
+        recent: { n: recent.n,
+                  acc: recent.n ? Math.round(recent.ok / recent.n * 100) : 0 },
+        lapsesTotal,
+        /* 六边形六轴（0-100）：四大专项 + 速度达标率 + 近期状态 */
+        radarAxes: (targetAcc) => {
+          const byCat = c => {
+            const s = skills.find(x => x.cat === c);
+            return s ? s.acc : 0;
+          };
+          return [
+            { label: "词汇", pct: byCat("vocab") },
+            { label: "阅读", pct: byCat("reading") },
+            { label: "语法", pct: byCat("grammar") },
+            { label: "数学", pct: byCat("math") },
+            { label: "速度", pct: speed.allN ? Math.round(speed.ok / speed.allN * 100) : 0 },
+            { label: "近期", pct: recent.n ? Math.round(recent.ok / recent.n * 100) : 0 },
+          ];
+        },
+        targetLine: targetAcc => targetAcc || 85,   // 目标线默认85%（页面可改目标分后由AI给每轴目标）
       };
     }
 
@@ -2163,6 +2206,59 @@
       }
       return { tasks, estMinutes: usedMin, dailyMinutes: minutes };
     }
+    /* 分数估算：公开换算锚点分段线性插值。非官方换算表，界面必须标注"估算"。 */
+    const SCORE_ANCHORS = {
+      1: [[0, 200], [10, 390], [20, 510], [30, 620], [40, 710], [47, 765], [54, 800]],
+      2: [[0, 200], [8, 360], [16, 480], [22, 580], [30, 670], [38, 745], [44, 800]],
+    };
+    function estimateSectionScore(sec, raw, total) {
+      if (!total) return null;
+      const stdRaw = raw / total * (sec === 1 ? 54 : 44);   // 折算成标准模块题量
+      const tab = SCORE_ANCHORS[sec];
+      let v = tab[tab.length - 1][1];
+      for (let i = 0; i < tab.length - 1; i++) {
+        const [r0, s0] = tab[i], [r1, s1] = tab[i + 1];
+        if (stdRaw <= r1) {
+          v = r1 === r0 ? s1 : s0 + (s1 - s0) * (stdRaw - r0) / (r1 - r0);
+          break;
+        }
+      }
+      return Math.round(v / 10) * 10;
+    }
+
+    /* 六边形雷达图（纯SVG，无依赖）。axes: [{label, pct}], targetPct: 目标线 */
+    function radarSVG(axes, targetPct) {
+      const size = 260, c = size / 2, R = c - 42;
+      const n = axes.length;
+      const pt = (i, v) => {
+        const a = -Math.PI / 2 + i * 2 * Math.PI / n;
+        const r = R * Math.max(0, Math.min(100, v)) / 100;
+        return (c + r * Math.cos(a)).toFixed(1) + "," + (c + r * Math.sin(a)).toFixed(1);
+      };
+      let svg = `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="max-width:100%">`;
+      [25, 50, 75, 100].forEach(ring => {
+        svg += `<polygon points="${axes.map((_, i) => pt(i, ring)).join(" ")}"
+          fill="none" stroke="#e2e8f0" stroke-width="1"/>`;
+      });
+      axes.forEach((_, i) => {
+        const [x, y] = pt(i, 100).split(",");
+        svg += `<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`;
+      });
+      if (targetPct) {
+        svg += `<polygon points="${axes.map((_, i) => pt(i, targetPct)).join(" ")}"
+          fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+      }
+      svg += `<polygon points="${axes.map((a, i) => pt(i, a.pct)).join(" ")}"
+        fill="rgba(20,78,75,.22)" stroke="#144e4b" stroke-width="2"/>`;
+      axes.forEach((a, i) => {
+        const [x, y] = pt(i, 116).split(",");
+        svg += `<text x="${x}" y="${y}" text-anchor="middle" font-size="11"
+          font-weight="700" fill="#475569">${a.label} ${a.pct}</text>`;
+      });
+      svg += "</svg>";
+      return svg;
+    }
+
     /* ===== COACH-CORE END ===== */
 
     /* ===== AI教练 UI =====
@@ -2175,7 +2271,12 @@
     function saveCoachPrefs() {
       const mins = Math.max(10, Math.min(180, +document.getElementById("coach-minutes").value || 40));
       const exam = document.getElementById("coach-examdate").value || "";
-      Store.saveCoachPrefs({ dailyMinutes: mins, examDate: exam });
+      const scoreNow = +document.getElementById("coach-score-now").value || null;
+      const scoreGoal = +document.getElementById("coach-score-goal").value || null;
+      Store.saveCoachPrefs({
+        dailyMinutes: mins, examDate: exam,
+        currentScore: scoreNow, targetScore: scoreGoal,
+      });
       toastMini("教练偏好已保存");
       renderCoach();
     }
@@ -2240,12 +2341,26 @@
       const prefs = coachPrefs();
       const minsEl = document.getElementById("coach-minutes");
       const dateEl = document.getElementById("coach-examdate");
+      const nowEl = document.getElementById("coach-score-now");
+      const goalEl = document.getElementById("coach-score-goal");
       if (minsEl && !minsEl.value) minsEl.value = prefs.dailyMinutes || 40;
       if (dateEl && !dateEl.value && prefs.examDate) dateEl.value = prefs.examDate;
+      if (nowEl && !nowEl.value && prefs.currentScore) nowEl.value = prefs.currentScore;
+      if (goalEl && !goalEl.value && prefs.targetScore) goalEl.value = prefs.targetScore;
 
       const agg = coachAggregate(attempts, mistakes);
       const plan = coachTodayPlan(agg, prefs);
       const doneMap = coachDoneMap()[coachYmd()] || {};
+
+      // 能力六边形
+      const radarBox = document.getElementById("coach-radar");
+      if (radarBox) {
+        const axes = agg.radarAxes();
+        const hasAny = axes.some(a => a.pct > 0);
+        radarBox.innerHTML = hasAny
+          ? radarSVG(axes, 85)
+          : '<p class="text-xs text-slate-400 py-8">做完题后这里会出现你的能力六边形。</p>';
+      }
 
       // 今日任务卡片
       const todayBox = document.getElementById("coach-today");
@@ -2322,6 +2437,7 @@
       }).join("\n");
       return `做题总量: ${agg.totals.n} 题, 总正确率 ${agg.totals.acc}%
 到期错题: ${agg.dueCount}
+分数目标: ${prefs.currentScore ? "当前约" + prefs.currentScore + "分" : "当前分未知(可由完整模考估算)"} → ${prefs.targetScore ? "目标" + prefs.targetScore + "分" : "目标未定"}
 四象限: 慢而对${agg.quad.slowRight} 慢而错${agg.quad.slowWrong} 快而错${agg.quad.fastWrong} 快而对${agg.quad.fastRight}
 偏好: 每日${prefs.dailyMinutes || 40}分钟, 考试日期${prefs.examDate || "未定"}
 考点明细(按正确率升序):
@@ -2402,11 +2518,14 @@ ${lines || "（暂无考点数据）"}`;
         const days = prefs.examDate
           ? `距考试约 ${Math.max(1, Math.ceil((new Date(prefs.examDate) - Date.now()) / 86400000))} 天`
           : "考试日期未定，按两周循环计划设计";
+        const scoreLine = (prefs.currentScore || prefs.targetScore)
+          ? `分数目标: ${prefs.currentScore || "未知"} → ${prefs.targetScore || "未定"}。请把提分缺口换算成各考点要达到的正确率水平（如"语法从63%提到85%+"），写进每周任务。`
+          : "分数目标未填，按各薄弱考点正确率达到85%设计。";
         const reply = await callDeepSeek([{
           role: "user",
-          content: `基于以下作答数据，为这名自学考生排一份 Digital SAT 学习路径。\n\n${coachContextBlock(agg, prefs)}\n\n时间条件: ${days}，每日可用 ${prefs.dailyMinutes || 40} 分钟。\n` +
-            `要求：以周为单位；每周聚焦1-2个最弱考点+1个保持项；每天任务明确到"练什么+几道题"；末期安排模考。\n\n` +
-            `严格输出JSON（不要markdown代码块）：\n{"weeks":[{"label":"第1周","focus":["考点名"],"tasks":[{"day":"周一","text":"错题重练10题+Transitions专项8题"}]}]}`,
+          content: `基于以下作答数据，为这名自学考生排一份 Digital SAT 学习路径。\n\n${coachContextBlock(agg, prefs)}\n\n时间条件: ${days}，每日可用 ${prefs.dailyMinutes || 40} 分钟。${scoreLine}\n` +
+            `要求：以周为单位；每周聚焦1-2个最弱考点+1个保持项；每周开头注明"本周结束时该考点要达到的正确率水平"；每天任务明确到"练什么+几道题"；末期安排模考。\n\n` +
+            `严格输出JSON（不要markdown代码块）：\n{"weeks":[{"label":"第1周","focus":["考点名"],"target":"本周达标水平","tasks":[{"day":"周一","text":"错题重练10题+Transitions专项8题"}]}]}`,
         }], { system: "你是 Digital SAT 备考规划师。只依据给定数据排计划，任务必须具体到题量，总量不得超过每日可用时长。", jsonMode: true, maxTokens: 2200, temperature: 0.5 });
         const plan = extractJson(reply);
         plan.generatedAt = Date.now();
@@ -2499,7 +2618,8 @@ ${lines || "（暂无考点数据）"}`;
           <p class="text-[11px] text-slate-400 mb-2">生成于 ${new Date(plan.generatedAt).toLocaleString()} · 共 ${plan.weeks.length} 周</p>
           ${plan.weeks.map((wk, wi) => `
             <div class="border border-slate-200 rounded-xl p-3.5 mb-2.5">
-              <p class="text-sm font-bold text-slate-900 mb-1.5">${wk.label} — 聚焦：${(wk.focus || []).join("、") || "—"}</p>
+              <p class="text-sm font-bold text-slate-900 mb-1.5">${wk.label} — 聚焦：${(wk.focus || []).join("、") || "—"}
+                ${wk.target ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">达标线: ${wk.target}</span>` : ""}</p>
               ${(wk.tasks || []).map((t, ti) => {
                 const k = wi + "-" + ti;
                 const checked = plan.done && plan.done[k];
@@ -3027,6 +3147,49 @@ ${lines || "（暂无考点数据）"}`;
            <p class="text-[10px] text-slate-400 mt-1">第 ${list.map(x => x.i + 1).join("、")} 题</p>
          </div>`).join("");
 
+      // 本次练习六边形：按专项正确率 + 速度达标率（至少3个有数据的维度才画）
+      const bySk = {};
+      d.items.forEach(x => {
+        const k = (x.q.cat || "other") + "|" + (x.q.sk || "未归类");
+        bySk[k] = bySk[k] || { cat: x.q.cat, sk: x.q.sk, n: 0, ok: 0, ms: 0, paced: 0, timed: 0 };
+        bySk[k].n++;
+        if (x.ok) bySk[k].ok++;
+        bySk[k].ms += x.ms || 0;
+        const pacing = x.q.sec === 2 ? 95 : 71;
+        if (x.ms > 0) { bySk[k].timed++; if (x.ms <= pacing * 1000) bySk[k].paced++; }
+      });
+      const skAxes = Object.values(bySk)
+        .filter(s => s.n >= 3)
+        .sort((a, b) => b.n - a.n).slice(0, 5)
+        .map(s => ({ label: s.sk.slice(0, 8), pct: Math.round(s.ok / s.n * 100) }));
+      const timed = Object.values(bySk).reduce((t, s) => t + s.timed, 0);
+      const paced = Object.values(bySk).reduce((t, s) => t + s.paced, 0);
+      if (timed >= 3) skAxes.push({ label: "速度", pct: Math.round(paced / timed * 100) });
+      const sessionRadar = skAxes.length >= 3 ? radarSVG(skAxes) : "";
+
+      // 估算分：只在题量凑齐标准模块时给（RW 54 / Math 44），缺题不估 —— 不编数字
+      const sec1 = d.items.filter(x => x.q.sec === 1);
+      const sec2 = d.items.filter(x => x.q.sec === 2);
+      const est = {};
+      if (sec1.length === 54) est.rw = estimateSectionScore(1, sec1.filter(x => x.ok).length, 54);
+      if (sec2.length === 44) est.math = estimateSectionScore(2, sec2.filter(x => x.ok).length, 44);
+      if (est.rw && est.math) est.total = Math.round((est.rw + est.math) / 20) * 10;
+      const estHtml = (est.rw || est.math) ? `
+        <div class="mt-3 p-3 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-900">
+          <b>估算分（按公开换算锚点插值，<u>非官方换算</u>）：</b>
+          ${est.rw ? ` 阅读语法 ${est.rw}` : ""}${est.math ? ` · 数学 ${est.math}` : ""}${est.total ? ` · <b>总分约 ${est.total}</b>` : ""}
+          —— 估算基于本次题量恰好凑齐标准模块。错题分布见下方六边形与逐题复盘。
+        </div>` : "";
+
+      const sessionRadarHtml = sessionRadar ? `
+        <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 mb-1">本次练习画像</h3>
+            <p class="text-[11px] text-slate-400 leading-relaxed">各维度=该维度本次正确率；速度=按官方配速完成的占比。图形越瘪的轴越该优先补。完整标准模块的估算分见上方蓝框。</p>
+          </div>
+          <div class="flex justify-center">${sessionRadar}</div>
+        </div>` : "";
+
       const rows = d.items.map(x => renderDebriefItem(x)).join("");
 
       box.innerHTML = `
@@ -3036,6 +3199,8 @@ ${lines || "（暂无考点数据）"}`;
           ${stat(fmtSec(totalMs), "总用时")}
           ${stat(n ? fmtSec(totalMs / n) : "—", "平均每题")}
         </div>
+        ${estHtml}
+        ${sessionRadarHtml}
 
         ${quad ? `<div class="mt-5">
           <h3 class="text-sm font-bold text-slate-900 mb-1">用时 × 对错</h3>

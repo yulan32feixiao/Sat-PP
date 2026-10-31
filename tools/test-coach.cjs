@@ -90,5 +90,18 @@ ok("每日时长钳制在≤180分钟", planLong.dailyMinutes === 180);
 const planShort = coachTodayPlan(aggWeak, { dailyMinutes: 5 }, NOW);
 ok("每日时长钳制在≥10分钟", planShort.dailyMinutes === 10);
 
-console.log(`\n${pass} 通过 / ${fail} 失败`);
+// ---------- 分数估算（刀1新增） ----------
+console.log("=== estimateSectionScore 分数估算 ===");
+const html2 = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+const anchors = html2.match(/const SCORE_ANCHORS = \{[\s\S]*?\};/);
+const estFn = html2.match(/function estimateSectionScore\([\s\S]*?\n    \}/);
+if (!anchors || !estFn) { console.error("✗ 没找到估算代码"); process.exit(1); }
+const { estimateSectionScore: est } = new Function(anchors[0] + "\n" + estFn[0] + "; return { estimateSectionScore };")();
+ok("满分模块 RW 54/54 → 800", est(1, 54, 54) === 800);
+ok("满分模块 Math 44/44 → 800", est(2, 44, 44) === 800);
+ok("零分 → 200", est(1, 0, 54) === 200 && est(2, 0, 44) === 200);
+ok("RW半对 27/54 ≈ 600", Math.abs(est(1, 27, 54) - 600) <= 10);
+ok("结果为10的倍数", est(1, 33, 54) % 10 === 0);
+ok("部分题量按比例折算(44题里22对≈RW27对)", Math.abs(est(2, 22, 44) - est(1, 27, 54)) <= 20);
+console.log(`\n最终: ${pass} 通过 / ${fail} 失败`);
 process.exit(fail ? 1 : 0);
