@@ -1754,9 +1754,14 @@
       // 每套的不确定性，摆在明面上
       const chips = [];
       const total = s.m1 + s.m2;
-      if (s.note || total < s.expected * 2) {
-        chips.push(['bg-amber-50 text-amber-800 border-amber-200',
-                    `不完整：${s.note || `共${total}题`}`]);
+      if (total < s.expected * 2) {
+        if (s.dedupRemoved > 0) {
+          chips.push(['bg-emerald-50 text-emerald-800 border-emerald-200',
+                      `去重后${total}题（原${s.expected * 2}题，重复${s.dedupRemoved}题已删）`]);
+        } else {
+          chips.push(['bg-amber-50 text-amber-800 border-amber-200',
+                      `不完整：${s.note || `共${total}题`}`]);
+        }
       } else {
         chips.push(['bg-emerald-50 text-emerald-800 border-emerald-200',
                     `${total}题完整（${s.m1}+${s.m2}）`]);
@@ -1857,7 +1862,7 @@
       const secName = s.sec === 1 ? "Reading & Writing" : "Math";
       return {
         title: `${s.title.replace(/阅读语法|数学/, secName)}`,
-        moduleTag: `Module ${mod} · ${qs.length}题 · ${Math.round(qs.length * perQ / 60)}分钟${qs.length < s.expected ? "（缺题限时已缩短）" : ""}`,
+        moduleTag: `Module ${mod} · ${qs.length}题 · ${Math.round(qs.length * perQ / 60)}分钟${qs.length < s.expected ? (s.dedupRemoved > 0 ? "（重复题已删，限时按剩余题数）" : "（缺题限时已缩短）") : ""}`,
         isMock: true,
         mock2026: true,
         setId: s.setId,
