@@ -438,6 +438,9 @@
         </div>
       </div>
 
+      <!-- 水平摸底入口 -->
+      <div id="coach-placement" class="mt-6"></div>
+
       <!-- 六边形能力图 + 今日任务 -->
       <div class="mt-6 grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
         <div class="bg-white border border-slate-200 rounded-xl p-4 lg:col-span-2">
@@ -1419,6 +1422,7 @@
         drillSources: PREFIX + "drill_sources", // ["bank","mock","y25","mine"] 的勾选组合
         freewriteSum: PREFIX + "freewrite_sum", // 最近一次AI笔记总结
         aiChat: PREFIX + "ai_chat",           // AI快捷对话历史（最近40条）
+        placementDone: PREFIX + "placement_done", // 摸底测试完成标记 {ts, total}
       };
 
       let warned = false;
@@ -1465,6 +1469,8 @@
         saveFreewriteSum(s){ return put(K.freewriteSum, s); },
         aiChat()           { return raw(K.aiChat, []); },
         saveAiChat(h)      { return put(K.aiChat, h.slice(-40)); },
+        placementDone()    { return raw(K.placementDone, null); },
+        savePlacementDone(v){ return put(K.placementDone, v); },
         drillSources()     { return raw(K.drillSources, null) || ["mock"]; },
         saveDrillSources(a){ return put(K.drillSources, a); },
         clearSession()     { try { localStorage.removeItem(K.session); } catch (e) {} },
@@ -2166,7 +2172,7 @@
           return false;
         });
         const skAttempts = srcAtt.filter(a => a.sk === skName);
-        const skAcc = skAttempts.length ? Math.round((skAttempts.filter(a=>a.ok).length / skAttempts.length) * 100) : 75;
+        const skAcc = skAttempts.length ? Math.round((skAttempts.filter(a=>a.ok).length / skAttempts.length) * 100) : null;   // null=未测，不编数字
 
         card.className = "p-3.5 bg-slate-50 border border-slate-200 rounded-lg hover:border-[#144e4b] hover:bg-white transition cursor-pointer flex flex-col justify-between";
         card.onclick = () => selectSpecificSkill(catKey, skName);
@@ -2178,11 +2184,11 @@
               <span class="text-[#144e4b] font-mono text-[11px]">${qCount} 题</span>
             </div>
             <div class="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
-              <div class="bg-[#144e4b] h-full rounded-full" style="width: ${skAcc}%"></div>
+              <div class="${skAcc === null ? "" : "bg-[#144e4b]"} h-full rounded-full" style="width: ${skAcc === null ? 0 : skAcc}%"></div>
             </div>
           </div>
           <div class="flex items-center justify-between text-[11px] text-slate-400 mt-2.5 pt-2 border-t border-slate-100">
-            <span>掌握度: ${skAcc}%</span>
+            <span>${skAcc === null ? "掌握度: 未测" : "掌握度: " + skAcc + "%"}</span>
             <span class="text-[#144e4b] font-semibold hover:underline">选中此项 &rarr;</span>
           </div>
         `;
@@ -2537,6 +2543,26 @@
       const agg = coachAggregate(attempts, mistakes);
       const plan = coachTodayPlan(agg, prefs);
       const doneMap = coachDoneMap()[coachYmd()] || {};
+
+      // 摸底入口：没测过就大卡引导，测过给小链接
+      const done = Store.placementDone();
+      const placeBox = document.getElementById("coach-placement");
+      if (placeBox) {
+        placeBox.innerHTML = done
+          ? `<div class="bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-500 flex items-center justify-between">
+               <span><i class="fa-solid fa-circle-check text-emerald-600 mr-1.5"></i>上次摸底：估算总分约 <b>${done.total || "?"}</b>（${new Date(done.ts).toLocaleDateString()}）</span>
+               <button onclick="startPlacementTest()" class="px-2.5 py-1 border border-slate-300 rounded text-[11px] font-bold hover:bg-slate-50">重新摸底</button>
+             </div>`
+          : `<div class="bg-white border border-sky-200 rounded-xl p-4">
+               <div class="flex items-center justify-between gap-3 flex-wrap">
+                 <div class="text-xs text-slate-600 leading-relaxed">
+                   <b class="text-slate-900">还没测过水平？</b> 先做 20 分钟摸底（16题抽样：8阅读语法+8数学）——
+                   测完给各专项正确率、粗略估算分，并可作为"当前分"供AI排学习路径。
+                 </div>
+                 <button onclick="startPlacementTest()" class="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition shrink-0">开始摸底</button>
+               </div>
+             </div>`;
+      }
 
       // 能力六边形
       const radarBox = document.getElementById("coach-radar");
@@ -3046,6 +3072,47 @@ ${lines || "（暂无考点数据）"}`;
       renderAiChat();
     }
 
+    /* ===== 20分钟水平摸底（16题抽样：8阅读语法+8数学） =====
+       抽样自当前勾选的真题来源（默认2026）。测完给各专项正确率+粗略估算分，
+       并可一键设为"当前分"供AI计划使用。样本小，估算标注"粗略"。 */
+    function setPlacementScore(total) {
+      const prefs = coachPrefs();
+      prefs.currentScore = total;
+      Store.saveCoachPrefs(prefs);
+      toastMini("已把 " + total + " 设为当前分，AI计划将基于此排路径");
+    }
+
+    function startPlacementTest() {
+      const pool = (function () {
+        if (typeof MOCK !== "undefined" && MOCK && MOCK.questions && MOCK.questions.length) return MOCK.questions;   // 优先2026真题
+        return BANK;                                                                                                 // 兜底官方题库
+      })();
+      const sec1 = pool.filter(q => q.sec === 1);
+      const sec2 = pool.filter(q => q.sec === 2);
+      const pick = (arr, n) => [...arr].sort(() => Math.random() - 0.5).slice(0, n);
+      // 词汇2 阅读2 语法2 语法/词汇混合2 + 数学8 —— 覆盖四个专项
+      const chosen = []
+        .concat(pick(sec1.filter(q => q.cat === "vocab"), 2))
+        .concat(pick(sec1.filter(q => q.cat === "reading"), 2))
+        .concat(pick(sec1.filter(q => q.cat === "grammar"), 2))
+        .concat(pick(sec1.filter(q => q.cat === "grammar" || q.cat === "reading" || q.cat === "vocab"), 2))
+        .concat(pick(sec2, 8));
+      const filled = chosen.filter(Boolean);
+      if (filled.length < 12) return alert("题库还没载入好或来源题量不足，稍后再试。");
+      initRunnerSession({
+        title: "20分钟水平摸底测试",
+        moduleTag: `${filled.length}题 · 20分钟 · 抽样自${drillSourceLabel ? (drillSources.includes("mock") ? "2026真题" : drillSourceLabel()) : "官方题库"}`,
+        isMock: false,
+        placement: true,
+        calcAllowed: true,   // 含数学题；混合模式下按练习标准开放计算器
+        questions: filled,
+        timeLimitSec: 20 * 60,
+        answers: filled.map(() => ({ picked: null, struck: [], flagged: false })),
+        currentIndex: 0,
+        startTime: Date.now()
+      });
+    }
+
     // ================= 视图路由导航 (VIEW ROUTER) =================
     function switchView(viewName) {
       document.querySelectorAll(".view-panel").forEach(el => el.classList.add("hidden"));
@@ -3492,6 +3559,8 @@ ${lines || "（暂无考点数据）"}`;
       debriefData = {
         label: session.title || "专项练习",
         sid,
+        placement: !!session.placement,
+        // 摸底完成：记录标记（供教练页判断是否已测过）
         ts: Date.now(),
         ok: okCount,
         skipped: (session.answers || []).filter(a => a.picked == null || String(a.picked).trim() === "").length,
@@ -3515,6 +3584,7 @@ ${lines || "（暂无考点数据）"}`;
       switchView("debrief");
       document.getElementById("view-debrief").classList.remove("hidden");
       fireAiAutoNote();   // 每次练习结束：AI自动来一小段"问题在哪+该刷多少"
+      if (session.placement) Store.savePlacementDone({ ts: Date.now(), total: attempts.filter(a => a.sid === session.sid).length });
     }
 
     /* AI补错因：官方不写数学/部分干扰项解析时自动归类覆盖率低（数7%）——
@@ -3699,6 +3769,20 @@ ${lines || "（暂无考点数据）"}`;
           ${est.rw ? ` 阅读语法 ${est.rw}` : ""}${est.math ? ` · 数学 ${est.math}` : ""}${est.total ? ` · <b>总分约 ${est.total}</b>` : ""}
           —— 估算基于本次题量恰好凑齐标准模块。错题分布见下方六边形与逐题复盘。
         </div>` : "";
+      // 摸底测试：小样本按比例折算粗略估算分 + 一键设为当前分
+      let placementHtml = "";
+      if (d.placement && sec1.length && sec2.length) {
+        const r1 = estimateSectionScore(1, sec1.filter(x => x.ok).length, sec1.length);
+        const r2 = estimateSectionScore(2, sec2.filter(x => x.ok).length, sec2.length);
+        const tot = Math.round((r1 + r2) / 20) * 10;
+        placementHtml = `
+        <div class="mt-3 p-3 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-900">
+          <b>摸底粗略估算（样本仅${sec1.length + sec2.length}题，误差较大）：</b>
+          阅读语法约 ${r1} · 数学约 ${r2} · <b>总分约 ${tot}</b>。
+          建议再做一次完整真题模考校准。
+          <button onclick="setPlacementScore(${tot})" class="ml-2 px-2.5 py-1 bg-[#144e4b] text-white rounded text-[11px] font-bold hover:bg-[#0e3b38]">把${tot}设为当前分</button>
+        </div>`;
+      }
 
       const sessionRadarHtml = sessionRadar ? `
         <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
@@ -3719,6 +3803,7 @@ ${lines || "（暂无考点数据）"}`;
           ${stat(n ? fmtSec(totalMs / n) : "—", "平均每题")}
         </div>
         ${estHtml}
+        ${placementHtml}
         ${sessionRadarHtml}
 
         ${quad ? `<div class="mt-5">
