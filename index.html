@@ -4,8 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SAT 智能练习与水平评估平台</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- 全部本地依赖：断网照常用（私人/离线版的前提），公开网址也更快 -->
+  <script src="vendor/tailwind.js"></script>
+  <link rel="stylesheet" href="vendor/fontawesome/all.min.css">
   <!-- KaTeX 自托管：数学规范排版（堆叠分数/根号/指数），离线可用 -->
   <link rel="stylesheet" href="katex/katex.min.css">
   <script src="katex/katex.min.js"></script>
@@ -764,7 +765,8 @@
       </div>
 
       <div id="calc-desmos" class="flex-1 bg-white relative hidden">
-        <iframe src="https://www.desmos.com/testing/cb-sat-ap/graphing" class="w-full h-full border-none" id="desmos-iframe"></iframe>
+        <iframe class="w-full h-full border-none" id="desmos-iframe"></iframe>
+        <p class="absolute inset-0 flex items-center justify-center text-xs text-slate-400 pointer-events-none" id="desmos-placeholder">切到本标签后加载 Desmos（需联网）</p>
       </div>
     </div>
   </div>
@@ -4019,6 +4021,17 @@
       if (td) td.className = "text-xs px-2.5 py-1 rounded font-semibold transition " + (m === "desmos" ? on : off);
       document.getElementById('calc-basic').classList.toggle('hidden', m !== "basic");
       document.getElementById('calc-desmos').classList.toggle('hidden', m !== "desmos");
+      if (m === "desmos") {
+        // 首次切到 Desmos 才加载 —— 私人/离线版平时零外网请求
+        const ifr = document.getElementById('desmos-iframe');
+        if (ifr && !ifr.src) {
+          ifr.src = "https://www.desmos.com/testing/cb-sat-ap/graphing";
+          ifr.addEventListener("load", () => {
+            const ph = document.getElementById('desmos-placeholder');
+            if (ph) ph.remove();
+          }, { once: true });
+        }
+      }
       if (m === "basic") { calcRenderPad(); const i = document.getElementById('calc-expr'); if (i) i.focus(); }
     }
     function openDesmosModal() {
