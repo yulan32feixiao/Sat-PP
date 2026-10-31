@@ -37,6 +37,13 @@
       justify-content: center;
       border-radius: 2px;
     }
+
+    /* 真题配图/选项表格图限宽防溢出；点击可看原图（JS接管） */
+    #runner-options-group img, #runner-prompt img, .mistake-detail img {
+      max-width: 260px !important;
+      height: auto;
+      cursor: zoom-in;
+    }
   </style>
 <style>
   /* 划词高亮和收生词要能选中文字。原来 <body> 上挂了 select-none，

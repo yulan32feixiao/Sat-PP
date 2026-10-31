@@ -24,8 +24,9 @@ GZIP_TYPES = {".html": "text/html; charset=utf-8",
               ".css": "text/css; charset=utf-8",
               ".svg": "image/svg+xml",
               ".json": "application/json; charset=utf-8"}
-# 首屏大文件：让浏览器整个会话只拉一次
-LONG_CACHE = {".bin", ".woff2", ".png", ".jpg", ".jpeg", ".gif", ".ico"}
+# 字体/图片可长缓存；bin 是题库数据，必须每次重验（更新题库后用户立刻拿到新题）
+LONG_CACHE = {".woff2", ".png", ".jpg", ".jpeg", ".gif", ".ico"}
+REVALIDATE = {".bin"}
 
 
 class FastHandler(SimpleHTTPRequestHandler):
@@ -37,6 +38,8 @@ class FastHandler(SimpleHTTPRequestHandler):
         if os.path.isfile(path):
             if ext in LONG_CACHE:
                 self.send_header("Cache-Control", "public, max-age=86400")
+            elif ext in REVALIDATE:
+                self.send_header("Cache-Control", "no-cache")   # 每次带条件请求，更新后立刻生效
             elif ext in GZIP_TYPES:
                 self.send_header("Cache-Control", "no-cache")
         super().end_headers()
