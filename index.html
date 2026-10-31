@@ -6,6 +6,9 @@
   <title>SAT 智能练习与水平评估平台</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- KaTeX 自托管：数学规范排版（堆叠分数/根号/指数），离线可用 -->
+  <link rel="stylesheet" href="katex/katex.min.css">
+  <script src="katex/katex.min.js"></script>
   <style>
     .strikethrough-opt { opacity: 0.35; text-decoration: line-through; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -2488,6 +2491,7 @@
           <button onclick="switchView('mistakes'); closeDebrief();" class="px-5 py-2.5 border border-slate-300 hover:bg-white rounded-lg text-sm font-semibold">去错题本</button>
           <button onclick="closeDebrief(); launchTargetedDrill();" class="px-5 py-2.5 border border-slate-300 hover:bg-white rounded-lg text-sm font-semibold">再来一组</button>
         </div>`;
+      mathRender(box);   // 复盘里的题目/解析公式同样规范排版
     }
 
     function renderDebriefItem(x) {
@@ -3022,12 +3026,15 @@
         body.classList.toggle('max-w-7xl', hasPassage);
         body.classList.toggle('max-w-3xl', !hasPassage);
       }
-      pEl.innerHTML = hasPassage ? q.sti : '';
+      pEl.innerHTML = hasPassage ? mathifyHTML(q.sti) : '';
+      if (hasPassage) mathRender(pEl);   // 数学规范排版（2026题的线性公式）
       if (hasPassage) applyHighlights();   // 本场画过的线重新套回来
       else renderHighlightBar();
 
       // 右栏题干
-      document.getElementById('runner-prompt').innerHTML = q.ste;
+      const promptEl = document.getElementById('runner-prompt');
+      promptEl.innerHTML = mathifyHTML(q.ste);
+      mathRender(promptEl);
 
       // 隐藏即时解析
       document.getElementById('runner-instant-rationale').classList.add('hidden');
@@ -3056,7 +3063,7 @@
         ['A', 'B', 'C', 'D'].forEach((ltr, i) => {
           const isSelected = (ans.picked === ltr);
           const isStruck = ans.struck.includes(ltr);
-          const optText = (q.op && q.op[i]) ? q.op[i] : `Choice ${ltr}`;
+          const optText = (q.op && q.op[i]) ? mathifyHTML(q.op[i]) : `Choice ${ltr}`;
 
           const div = document.createElement('div');
           div.className = `p-3 rounded-lg border flex justify-between items-center cursor-pointer transition ${
@@ -3079,6 +3086,7 @@
           `;
           optGroup.appendChild(div);
         });
+        mathRender(optGroup);   // 选项里的公式（频率表图选项无影响，跳过）
       }
     }
 
@@ -3786,6 +3794,105 @@
     }
 
     // ================= 通用弹窗与 Desmos 控制 =================
+    /* ============ 数学规范排版 (KATEX MATHIFY) ============
+       2026真题来自Word重排PDF，公式是线性的"计算机体"（3/2x、x^2、√9）。
+       这里在显示时自动找出文本里的"数学岛屿"，转成 LaTeX 用 KaTeX 排成
+       规范数学（分数堆叠、真指数、根号）——参考Bluebook的题目样式。
+       规则保守：拿不准的（x-intercept 这类英文词）一律不动。
+       官方题库自带 MathML 的题目跳过，它们本来就是规范数学。 */
+    const MATH_FUNCS = new Set(["sin","cos","tan","asin","acos","atan","log","ln","sqrt","abs","min","max","exp","pi","f","g","h"]);
+    const KTX_STRONG = /[0-9]/;   // 岛屿里必须有数字或指数/根号才转换
+
+    function islandToTex(island) {
+      let t = island;
+      // 先函数名（\sin 等），再做符号替换 —— 顺序反了会把 \sqrt 再改成 \\sqrt
+      for (const fn of MATH_FUNCS) {
+        if (fn.length > 1) t = t.replace(new RegExp("(?<![\\\\A-Za-z])" + fn + "\\b", "g"), "\\" + fn + " ");
+      }
+      t = t.replace(/[−–—]/g, "-").replace(/×/g, "\\times ").replace(/[⋅·]/g, "\\cdot ")
+           .replace(/≤/g, "\\leq ").replace(/≥/g, "\\geq ").replace(/π/g, "\\pi ")
+           .replace(/°/g, "^\\circ ").replace(/%/g, "\\% ");
+      // 根号：√(expr) 或 √紧跟的单个数字/变量
+      t = t.replace(/√\(([^()]*)\)/g, "\\sqrt{$1}");
+      t = t.replace(/√(\d+(?:\.\d+)?|[a-z])/g, "\\sqrt{$1}");
+      // 千分位逗号
+      t = t.replace(/(\d),(?=\d{3}\b)/g, "$1{,}");
+      // 分数堆叠：A/B 双方都是 数字/单变量/括号组（4(cx+4)/2 整体作分子）
+      const N = "\\d+(?:\\{,\\}\\d{3})*(?:\\.\\d+)?";
+      const DENOM = "(?:" + N + "|[a-z]|\\([^()]*\\))";
+      const NUMER = "(?:" + N + "\\([^()]*\\)|" + N + "|[a-z]|\\([^()]*\\))";
+      t = t.replace(new RegExp("(" + NUMER + ")/" + "(" + DENOM + ")", "g"),
+                    "\\frac{$1}{$2}");
+      return t.replace(/\s+/g, " ").trim();
+    }
+
+    function mathifySegment(text) {
+      // 找"数学岛屿"：连续的 数字/变量/已知函数/运算符/括号。
+      // 双字母组合（cx、xy）也是变量；空格只有在运算符旁才算岛内（"y = 2"算，"5 cats"不算）。
+      const tokenRe = /(\d+(?:[.,]\d+)*)|([A-Za-z]{1,2}(?![A-Za-z]))|([A-Za-z]+)|([-+=<>^()/%×⋅·√π°≤≥−{}])|(\s+)|(.)/g;
+      const OPS = "-+=<>^/%×⋅·√π°≤≥−(";
+      const out = [];
+      let island = "";
+      const flush = () => {
+        if (island.trim()) {
+          // 尾部修剪只删悬空的二元运算符；π、√、^、} 是内容，不能删
+          const core = island.trim().replace(/[-+=<>(/%×⋅·°≤≥−\s]+$/, "");
+          if (core && (KTX_STRONG.test(core) || /[√^]/.test(core)) && core.length >= 2
+              && /[=+\-−×⋅·/^√π≤≥{}]/.test(core)) {
+            out.push('<span class="ktx" data-tex="' +
+                     encodeURIComponent(islandToTex(core)) + '"></span>');
+          } else {
+            out.push(island);
+          }
+        }
+        island = "";
+      };
+      let m;
+      while ((m = tokenRe.exec(text)) !== null) {
+        const tok = m[0];
+        if (m[1] !== undefined || m[2] !== undefined) { island += tok; continue; }  // 数字/短变量
+        if (m[3] !== undefined) {                                                     // 长单词
+          if (MATH_FUNCS.has(tok)) { island += tok; continue; }
+          flush(); out.push(tok); continue;
+        }
+        if (m[4] !== undefined) { island += tok; continue; }                          // 运算符
+        if (m[5] !== undefined) {                                                    // 空格
+          const prev = island.trim().slice(-1);
+          const rest = text.slice(tokenRe.lastIndex);
+          const nextTok = rest.match(/^\S+/);
+          const nextCh = nextTok ? nextTok[0][0] : "";
+          if (island && prev && OPS.includes(prev) && OPS.includes(nextCh)) {
+            island += " "; continue;
+          }
+          flush(); out.push(tok); continue;
+        }
+        flush(); out.push(tok);                                                       // 其他字符
+      }
+      flush();
+      return out.join("");
+    }
+
+    function mathifyHTML(html) {
+      if (!html) return html;
+      const s = String(html);
+      if (s.includes("<math") || s.includes('class="ktx"')) return s;
+      // <sup> 先转 ^{}：x<sup>2</sup> → x^{2}
+      let pre = s.replace(/<sup>([^<]*)<\/sup>/g, "^{$1}");
+      // 逐标签段处理，只动文本
+      const parts = pre.split(/(<[^>]+>)/);
+      return parts.map(p => p.startsWith("<") ? p : mathifySegment(p)).join("");
+    }
+
+    function mathRender(el) {
+      if (!el || !window.katex) return;
+      el.querySelectorAll('span.ktx[data-tex]:empty').forEach(sp => {
+        try {
+          window.katex.render(decodeURIComponent(sp.dataset.tex), sp,
+                              { throwOnError: false, display: false });
+        } catch (e) { sp.textContent = sp.dataset.tex; }
+      });
+    }
+
     /* ============ 计算器 ============
        官方政策：数字 SAT 的 Math 全程可用计算器，R&W 不提供。真考用内置 Desmos。
        这里默认用自带的本地计算器（无第三方依赖、断网可用、键盘直通），
