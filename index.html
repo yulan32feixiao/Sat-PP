@@ -1748,7 +1748,8 @@
       }
     }
 
-    const MONTH_CN = { 10: "10月", 9: "9月", 8: "8月", 6: "6月", 5: "5月", 3: "3月" };
+    const MONTH_CN = { 1: "1月", 2: "2月", 3: "3月", 4: "4月", 5: "5月", 6: "6月", 7: "7月", 8: "8月", 9: "9月", 10: "10月", 11: "11月", 12: "12月" };
+    const monthLabel = m => MONTH_CN[m] || (m ? m + "月" : "时间未知");
 
     function setChips(s) {
       // 每套的不确定性，摆在明面上
@@ -1846,7 +1847,7 @@
         return `
         <div>
           <div class="flex items-baseline gap-2 mb-2">
-            <h3 class="text-sm font-extrabold text-slate-900">${yr}年${MONTH_CN[mo] || mo + '月'} · 第${nth}套</h3>
+            <h3 class="text-sm font-extrabold text-slate-900">${yr}年${monthLabel(mo)} · 第${nth}套</h3>
             ${i === 0 ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-[#144e4b] text-white font-bold">最新</span>' : ''}
             <span class="text-[11px] text-slate-400">${sets.length} 份卷</span>
           </div>
@@ -1980,7 +1981,7 @@
         const v = byMonth[m], pct = Math.round(v.ok / v.n * 100);
         return `
         <div class="flex items-center gap-2 text-[11px]">
-          <span class="w-14 text-right text-slate-500 font-semibold">${MONTH_CN[m] || m + '月'}</span>
+          <span class="w-14 text-right text-slate-500 font-semibold">${monthLabel(m)}</span>
           <div class="flex-1 h-3.5 bg-slate-100 rounded-full overflow-hidden">
             <div class="h-full ${pct >= 80 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-500' : 'bg-rose-500'}" style="width:${pct}%"></div>
           </div>

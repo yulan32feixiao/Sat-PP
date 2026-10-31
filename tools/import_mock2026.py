@@ -426,7 +426,7 @@ def build_questions(questions, doc, set_id, sec, stats):
     return out
 
 
-MONTH_ORDER = {"10": 10, "9": 9, "8": 8, "6": 6, "5": 5, "3": 3}
+MONTH_ORDER = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "11": 11, "12": 12}
 FALLBACK_SEQ = {}
 
 
