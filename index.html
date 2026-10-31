@@ -2591,6 +2591,7 @@
       return `做题总量: ${agg.totals.n} 题, 总正确率 ${agg.totals.acc}%
 到期错题: ${agg.dueCount}
 分数目标: ${prefs.currentScore ? "当前约" + prefs.currentScore + "分" : "当前分未知(可由完整模考估算)"} → ${prefs.targetScore ? "目标" + prefs.targetScore + "分" : "目标未定"}
+近7天: ${agg.recent.n ? agg.recent.acc + "%（" + agg.recent.n + "题）" : "无作答"}
 四象限: 慢而对${agg.quad.slowRight} 慢而错${agg.quad.slowWrong} 快而错${agg.quad.fastWrong} 快而对${agg.quad.fastRight}
 偏好: 每日${prefs.dailyMinutes || 40}分钟, 考试日期${prefs.examDate || "未定"}
 考点明细(按正确率升序):
@@ -3476,11 +3477,47 @@ ${lines || "（暂无考点数据）"}`;
       fireAiAutoNote();   // 每次练习结束：AI自动来一小段"问题在哪+该刷多少"
     }
 
+    /* AI补错因：官方不写数学/部分干扰项解析时自动归类覆盖率低（数7%）——
+       交卷后把无标签错题批量交给AI从固定11类里归类，写回记录 */
+    const COACH_ERROR_TAGS = ["文中无依据", "句子边界·标点", "读错具体信息", "主谓一致",
+      "动词时态", "逻辑连接词", "说反了", "过度推广", "代词指代", "张冠李戴", "答成细节"];
+
+    function aiBackfillTags() {
+      if (!llmChain().length) return;
+      const d = debriefData;
+      if (!d) return;
+      const untagged = d.items.filter(x => x.answered && !x.ok && !x.tag && BYID[x.q.id]).slice(0, 10);
+      if (!untagged.length) return;
+      const list = untagged.map(x => {
+        const q = BYID[x.q.id];
+        return { qid: x.q.id, pick: x.picked,
+                 stem: stripTags(q.ste).slice(0, 200),
+                 rationale: stripTags(q.ra).slice(0, 400) };
+      });
+      callDeepSeek([{
+        role: "user",
+        content: `以下是做错的题（含官方解析与考生错选）。每题从这11个标签里选最准确的一个：\n${COACH_ERROR_TAGS.join("、")}\n\n` +
+          JSON.stringify(list) + `\n\n严格输出JSON：{"items":[{"qid":"原样返回","tag":"11个之一"}]}。解析依据不足时选"读错具体信息"。`,
+      }], { system: "你是SAT错因标注器。只输出JSON，tag必须从给定11个里选。", jsonMode: true, maxTokens: 800, temperature: 0.2 })
+        .then(reply => {
+          const j = extractJson(reply);
+          let n = 0;
+          (j.items || []).forEach(it => {
+            if (!COACH_ERROR_TAGS.includes(it.tag)) return;
+            const a = [...attempts].reverse().find(x => x.qid === it.qid && !x.ok);
+            if (a) { a.tag = it.tag; n++; }
+            if (mistakes[it.qid]) mistakes[it.qid].tag = it.tag;
+          });
+          if (n) { Store.saveAttempts(attempts); Store.saveMistakes(mistakes); }
+        }).catch(() => {});
+    }
+
     function fireAiAutoNote() {
       const d = debriefData;
       if (!d || !llmChain().length) return;
       const answered = d.items.filter(x => x.answered);
       if (answered.length < 3) return;   // 太少不值得评，也不浪费token
+      aiBackfillTags();                  // 顺手补错因标签
       const per = {};
       answered.forEach(x => {
         const c = x.q.cat || "other";
@@ -3494,21 +3531,40 @@ ${lines || "（暂无考点数据）"}`;
         `- ${c}: ${v.ok}/${v.n} 对` +
         (Object.keys(v.tags).length ? `，错因: ${Object.entries(v.tags).map(([t, n]) => t + "x" + n).join("、")}` : "") +
         (v.slowWrong ? `，慢而错${v.slowWrong}道` : ""));
+      // 历史对比：近7天整体正确率 vs 本次
+      const recent = coachAggregate(attempts, mistakes).recent;
+      const trendLine = recent.n >= 5
+        ? `历史对比: 近7天整体正确率 ${recent.acc}%（${recent.n}题），本次 ${Math.round(d.ok / answered.length * 100)}%。`
+        : "";
       const body = document.getElementById("debrief-body");
       if (!body) return;
       const note = document.createElement("div");
       note.id = "debrief-ai-note";
       note.className = "no-print mt-3 p-3 bg-violet-50 border border-violet-200 rounded-xl text-xs text-slate-700";
-      note.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>AI 正在写本次短评…';
+      note.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>AI 正在生成本次短评…';
       body.prepend(note);
       callDeepSeek([{
         role: "user",
-        content: `刚做完一组题（作答 ${answered.length} 题，答对 ${d.ok} 题，${d.skipped} 题空着）。分专项数据：\n${lines.join("\n")}\n\n` +
-                 `用两三句中文直说：问题在哪 + 接下来该刷多少题、刷什么。不要客套，不要复述数据。`,
-      }], { system: "你是备考教练。输出一小段话，直接给结论。", maxTokens: 300, temperature: 0.4 })
-        .then(txt => {
+        content: `刚做完一组题（作答 ${answered.length} 题，答对 ${d.ok} 题，${d.skipped} 题空着）。分专项数据：\n${lines.join("\n")}\n${trendLine}\n\n` +
+                 `输出JSON：{"note":"两三句：问题在哪+接下来刷多少题、刷什么。有历史对比时点明趋势。","drills":[{"sk":"上面出现的薄弱考点","n":建议题数}]}`,
+      }], { system: "你是备考教练。note要直接给结论，不要客套；drills最多2项。", jsonMode: true, maxTokens: 500, temperature: 0.4 })
+        .then(reply => {
+          let noteTxt = "", drills = [];
+          try {
+            const j = extractJson(reply);
+            noteTxt = j.note || "";
+            drills = (j.drills || []).slice(0, 2);
+          } catch (e) { noteTxt = reply.replace(/###/g, "").replace(/\n/g, " "); }
           const el = document.getElementById("debrief-ai-note");
-          if (el) el.innerHTML = "<b>AI短评：</b>" + txt.replace(/###/g, "").replace(/\n/g, " ");
+          if (!el) return;
+          let html = "<b>AI短评：</b>" + String(noteTxt).replace(/\n/g, " ");
+          if (drills.length) {
+            html += '<div class="flex gap-1.5 mt-2">' + drills.map(dr =>
+              `<button onclick="launchCoachDrill('', '${String(dr.sk).replace(/['"\\]/g, "")}', ${+dr.n || 10})"
+                 class="px-2.5 py-1 bg-[#144e4b] text-white rounded-lg text-[11px] font-bold hover:bg-[#0e3b38]">
+                 刷 ${esc(String(dr.sk))} × ${+dr.n || 10}</button>`).join("") + "</div>";
+          }
+          el.innerHTML = html;
         })
         .catch(e => {
           const el = document.getElementById("debrief-ai-note");
