@@ -1785,7 +1785,7 @@
       const exp = s.expected;
       return `<b>${secName} · ${s.title}</b><br>
         · 来源：2026年考后回忆版，第三方重排录入（带编纂方水印），非 College Board 官方发布。<br>
-        · 完整性：Module 1 ${s.m1}题 / Module 2 ${s.m2}题（官方标准各${exp}题）${(s.m1 === exp && s.m2 === exp) ? "，完整，可计时模考。" : "，<b>缺题，不适合完整计时模考</b>，限时已按题数等比缩短。" + (s.note ? `（${s.note}）` : "")}<br>
+        · 完整性：Module 1 ${s.m1}题 / Module 2 ${s.m2}题（官方标准各${exp}题）${(s.m1 === exp && s.m2 === exp) ? "，完整，可计时模考。" : (s.dedupRemoved > 0 ? `，去重后剩${s.m1 + s.m2}题（原${exp * 2}题中有${s.dedupRemoved}题与官方/其他场重复，已删），可计时模考。` : "，<b>缺题，不适合完整计时模考</b>，限时已按题数等比缩短。" + (s.note ? `（${s.note}）` : ""))}<br>
         · 答案：题库方提供的答案+中文解析，非官方答案键。${s.audit ? "本套" + s.audit + "。" : "本套未逐题核验，遇争议解析以题目逻辑为准。"}<br>
         · 配图：${s.figs}张${s.lowFigs ? `，其中${s.lowFigs}张源文件分辨率偏低，可能模糊` : ""}。<br>
         · 难度与考点标签由模块位置和题干自动推断，非官方标注。`;
@@ -1847,7 +1847,7 @@
         return `
         <div>
           <div class="flex items-baseline gap-2 mb-2">
-            <h3 class="text-sm font-extrabold text-slate-900">${yr}年${monthLabel(mo)} · 第${nth}套</h3>
+            <h3 class="text-sm font-extrabold text-slate-900">${yr}年${monthLabel(mo)} · ${nth === 99 ? "合并/去重卷" : "第" + nth + "套"}</h3>
             ${i === 0 ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-[#144e4b] text-white font-bold">最新</span>' : ''}
             <span class="text-[11px] text-slate-400">${sets.length} 份卷</span>
           </div>
@@ -2552,7 +2552,11 @@
       const todayBox = document.getElementById("coach-today");
       document.getElementById("coach-today-meta").innerText =
         `预计 ${plan.estMinutes} 分钟 / 每日 ${plan.dailyMinutes} 分钟` +
-        (prefs.examDate ? ` · 距考试 ${Math.max(0, Math.ceil((new Date(prefs.examDate) - Date.now()) / DAY_MS_COACH))} 天` : " · 不限期");
+        (function () {
+          if (!prefs.examDate) return " · 不限期";
+          const days = Math.ceil((new Date(prefs.examDate) - Date.now()) / 86400000);
+          return isFinite(days) ? ` · 距考试 ${Math.max(0, days)} 天` : " · 不限期（考试日期无效）";
+        })();
       if (!agg.totals.n) {
         todayBox.innerHTML = `
           <div class="lg:col-span-3 bg-white border border-slate-200 rounded-xl p-8 text-center">
@@ -2702,9 +2706,10 @@ ${lines || "（暂无考点数据）"}`;
       const box = document.getElementById("coach-ai-plan");
       box.innerHTML = '<p class="text-sm text-slate-400"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>AI 正在排学习路径…</p>';
       try {
-        const days = prefs.examDate
-          ? `距考试约 ${Math.max(1, Math.ceil((new Date(prefs.examDate) - Date.now()) / 86400000))} 天`
-          : "考试日期未定，按两周循环计划设计";
+        const examDays = prefs.examDate ? Math.ceil((new Date(prefs.examDate) - Date.now()) / 86400000) : NaN;
+        const days = isFinite(examDays) && examDays > 0
+          ? `距考试约 ${examDays} 天`
+          : "考试日期未定或已过期，按两周循环计划设计";
         const scoreLine = (prefs.currentScore || prefs.targetScore)
           ? `分数目标: ${prefs.currentScore || "未知"} → ${prefs.targetScore || "未定"}。请把提分缺口换算成各考点要达到的正确率水平（如"语法从63%提到85%+"），写进每周任务。`
           : "分数目标未填，按各薄弱考点正确率达到85%设计。";
