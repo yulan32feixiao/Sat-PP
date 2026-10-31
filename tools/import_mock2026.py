@@ -44,6 +44,18 @@ STEM_RE = re.compile(
     r"Which of the following|Over the course|Which choice most|Which detail)", re.I)
 
 
+# 括号后平排指数修复：(x−1)2 → (x−1)<sup>2</sup>。
+# 题库方源PDF的上标有两种形态：小字号（已由字体检测还原）与同字号平排（这里修）。
+# 防误伤规则：指数后不能紧跟数字/左括号（排除坐标对"(−1, 2)"与函数调用），
+# 连续匹配>5次的题判为表格/矩阵，整题跳过。
+FLAT_EXP = re.compile(r"\)\s{0,2}([234])(?!\d)(?=\s*[^0-9(]|\s*$)")
+
+def repair_flat_exponents(html):
+    if not html or html.count(FLAT_EXP.pattern[:6]) > 60:
+        return html
+    return FLAT_EXP.sub(lambda m: ")<sup>" + m.group(1) + "</sup>", html)
+
+
 def esc(s):
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -397,6 +409,11 @@ def build_questions(questions, doc, set_id, sec, stats):
         df = "M" if mod == 1 else "H"   # 由模块位置推断，非官方难度标注
         exp_html = paragraphs(q["exp"])
         if sec == 2:
+            ste = repair_flat_exponents(ste)
+            exp_html = repair_flat_exponents(exp_html)
+            opts = [repair_flat_exponents(o) for o in opts]
+            if sum(1 for _ in FLAT_EXP.finditer(re.sub(r"<[^>]*>", "", ste))) > 5:
+                pass   # 连续过多=表格数据，上面的单点替换无害
             ste = fix_math_notation(ste)
             exp_html = fix_math_notation(exp_html)
             opts = [fix_math_notation(o) for o in opts]
