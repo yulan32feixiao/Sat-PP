@@ -3571,7 +3571,7 @@ ${lines || "（暂无考点数据）"}`;
             ? (q.ty === "spr" ? sprMatch(a.picked, q.an) : q.an.includes(a.picked))
             : false;
           return {
-            q, i, answered,
+            q, i, answered, flagged: !!a.flagged,
             picked: a.picked, ok: right, ms: a.ms || 0,
             tag: (mistakes[q.id] && mistakes[q.id].tag) || "",
             detail: (mistakes[q.id] && mistakes[q.id].detail) || "",
@@ -3682,10 +3682,10 @@ ${lines || "（暂无考点数据）"}`;
         });
     }
 
-    function closeDebrief() {
+    function closeDebrief(target) {
       document.getElementById("view-debrief").classList.add("hidden");
       debriefData = null;
-      switchView("dashboard");
+      switchView(target || "dashboard");
     }
 
     const fmtSec = (ms) => {
@@ -3793,7 +3793,9 @@ ${lines || "（暂无考点数据）"}`;
           <div class="flex justify-center">${sessionRadar}</div>
         </div>` : "";
 
-      const rows = d.items.map(x => renderDebriefItem(x)).join("");
+      const flaggedN = d.items.filter(x => x.flagged).length;
+      const rows = (d.showFlaggedOnly ? d.items.filter(x => x.flagged) : d.items).map(x => renderDebriefItem(x)).join("");
+      const flagFilterBtn = flaggedN ? `<button onclick="(function(){ debriefData.showFlaggedOnly = !debriefData.showFlaggedOnly; renderDebrief(); return 1; })()" class="px-2.5 py-1 ${d.showFlaggedOnly ? "bg-amber-500 text-white" : "border border-amber-300 text-amber-700"} rounded-lg text-[11px] font-bold transition">🚩 只看标记题（${flaggedN}）</button>` : "";
 
       box.innerHTML = `
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -3814,7 +3816,10 @@ ${lines || "（暂无考点数据）"}`;
 
         <div class="mt-6">
           <div class="flex items-center justify-between mb-2">
-            <h3 class="text-sm font-bold text-slate-900">逐题复盘</h3>
+            <div class="flex items-center gap-2">
+              <h3 class="text-sm font-bold text-slate-900">逐题复盘</h3>
+              ${flagFilterBtn}
+            </div>
             <span class="text-[11px] text-slate-400">做错的已展开，做对的点标题可展开</span>
           </div>
           <div class="space-y-3">${rows}</div>
@@ -3822,7 +3827,7 @@ ${lines || "（暂无考点数据）"}`;
 
         <div class="mt-7 flex flex-wrap gap-2 justify-center pb-10">
           <button onclick="closeDebrief()" class="px-5 py-2.5 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-sm font-semibold">完成复盘</button>
-          <button onclick="switchView('mistakes'); closeDebrief();" class="px-5 py-2.5 border border-slate-300 hover:bg-white rounded-lg text-sm font-semibold">去错题本</button>
+          <button onclick="closeDebrief('mistakes')" class="px-5 py-2.5 border border-slate-300 hover:bg-white rounded-lg text-sm font-semibold">去错题本</button>
           <button onclick="closeDebrief(); launchTargetedDrill();" class="px-5 py-2.5 border border-slate-300 hover:bg-white rounded-lg text-sm font-semibold">再来一组</button>
           <button onclick="openAiChatForLastSession()" class="px-5 py-2.5 border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 rounded-lg text-sm font-semibold">AI追问本场</button>
         </div>`;
@@ -3836,7 +3841,8 @@ ${lines || "（暂无考点数据）"}`;
         : x.ok
         ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">对</span>'
         : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-bold">错</span>';
-      const marks = (x.highlighted ? '<span class="text-[10px] text-amber-600 ml-1" title="这题画过高亮"><i class="fa-solid fa-highlighter"></i></span>' : "")
+      const marks = (x.flagged ? '<span class="text-[10px] text-amber-500 ml-1" title="考试时标记过"><i class="fa-solid fa-flag"></i></span>' : "")
+                  + (x.highlighted ? '<span class="text-[10px] text-amber-600 ml-1" title="这题画过高亮"><i class="fa-solid fa-highlighter"></i></span>' : "")
                   + (x.keypoints ? `<span class="text-[10px] text-sky-600 ml-1" title="这题有 ${x.keypoints} 条重点"><i class="fa-solid fa-star"></i></span>` : "");
       const chunk = (!x.ok && x.picked && q.ty !== "spr") ? extractChoiceRationale(q.ra || "", x.picked) : "";
       const gotChunk = chunk && chunk.length < stripTags(q.ra || "").length * 0.9;
