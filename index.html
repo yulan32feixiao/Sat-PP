@@ -473,8 +473,17 @@
         </button>
       </div>
 
-      <!-- 错题分类切换 -->
+      <!-- 视图切换（飞书文档式组织） -->
       <div class="flex items-center space-x-2 mt-6">
+        <span class="text-xs font-bold text-slate-400">组织方式:</span>
+        <button onclick="setMistakeView('session')" class="mv-btn px-3 py-1 rounded-full text-xs font-semibold" data-v="session">按练习场次</button>
+        <button onclick="setMistakeView('skill')" class="mv-btn px-3 py-1 rounded-full text-xs font-semibold" data-v="skill">按题型</button>
+        <button onclick="setMistakeView('flat')" class="mv-btn px-3 py-1 rounded-full text-xs font-semibold" data-v="flat">逐题列表</button>
+        <span class="text-[10px] text-slate-400 ml-2">题目内选中文字可高亮，题后可写 reflection（自动保存）</span>
+      </div>
+
+      <!-- 错题分类切换 -->
+      <div class="flex items-center space-x-2 mt-3">
         <span class="text-xs font-bold text-slate-400">分类:</span>
         <button onclick="setMistakeCatFilter('all')" class="m-cat-btn px-3 py-1 rounded-full bg-[#144e4b] text-white text-xs font-semibold" data-cat="all">全部</button>
         <button onclick="setMistakeCatFilter('vocab')" class="m-cat-btn px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200" data-cat="vocab">词汇单项</button>
@@ -804,6 +813,12 @@
       </div>
     </div>
   </div>
+
+  <!-- 随手记高亮浮动按钮 -->
+  <button id="fw-hl-btn" onclick="applyPendingHighlight()"
+    class="hidden fixed z-50 px-2.5 py-1.5 bg-slate-900 text-white rounded-lg text-[11px] font-bold shadow-lg">
+    <i class="fa-solid fa-highlighter mr-1" style="color:#fef08a"></i>高亮
+  </button>
 
   <!-- ================= 随手记（备忘录式侧边栏，任何页面随时记） ================= -->
   <button id="fab-note" onclick="toggleFreeDrawer()" title="随手记"
@@ -4502,6 +4517,7 @@ ${lines || "（暂无考点数据）"}`;
           const prev = mistakes[q.id] || {};
           mistakes[q.id] = {
             qid: q.id,
+            src: activeSession.title || "",
             cat: q.cat,
             sec: q.sec,
             dom: q.dom,
@@ -4573,6 +4589,80 @@ ${lines || "（暂无考点数据）"}`;
       renderMistakesView();
     }
 
+    let mistakeViewMode = 'session';
+    function setMistakeView(mode) { mistakeViewMode = mode; renderMistakesView(); }
+    const MISTAKE_SID = 'mistakes';   // 错题本高亮/笔记在 sat_highlights/sat_notes 里的伪场次键
+
+    /* esc 沿用文件后部已有的全局实现（AI引擎区），这里不重复声明 */
+
+    /* 把已保存的高亮串包成 <mark>（遍历文本节点，避开标签） */
+    function wrapMarksIn(el, strings) {
+      (strings || []).filter(s => s && s.length >= 2).forEach(s => {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        for (const node of nodes) {
+          const idx = node.textContent.indexOf(s);
+          if (idx < 0) continue;
+          const range = document.createRange();
+          range.setStart(node, idx);
+          range.setEnd(node, idx + s.length);
+          const mark = document.createElement('mark');
+          mark.className = 'fw-hl';
+          mark.style.background = '#fef08a';
+          try { range.surroundContents(mark); } catch (e) { continue; }
+          break;   // 每条串只包第一处
+        }
+      });
+    }
+
+    /* 选中文字 → 卡片右上角浮出"高亮"按钮 → 点击落mark并存档 */
+    let pendingHL = null;
+    function mistakeSelectionHandler() {
+      const sel = window.getSelection();
+      const btn = document.getElementById('fw-hl-btn');
+      if (!btn) return;
+      if (!sel || sel.isCollapsed || String(sel).trim().length < 2) { btn.classList.add('hidden'); pendingHL = null; return; }
+      const node = sel.anchorNode;
+      const card = (node && (node.nodeType === 1 ? node : node.parentElement)?.closest) ?
+        (node.nodeType === 1 ? node : node.parentElement).closest('.mistake-detail') : null;
+      if (!card) { btn.classList.add('hidden'); pendingHL = null; return; }
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      pendingHL = { qid: card.dataset.qid, text: String(sel).trim(), range: range.cloneRange() };
+      btn.style.left = Math.max(8, rect.left) + 'px';
+      btn.style.top = Math.max(8, rect.top - 34) + 'px';
+      btn.classList.remove('hidden');
+    }
+    function applyPendingHighlight() {
+      if (!pendingHL) return;
+      const card = document.querySelector(`.mistake-detail[data-qid="${pendingHL.qid}"]`);
+      const textNodeWrap = document.createElement('div');
+      // 用 DOM 包 mark
+      const range = pendingHL.range;
+      const mark = document.createElement('mark');
+      mark.className = 'fw-hl';
+      mark.style.background = '#fef08a';
+      try { range.surroundContents(mark); } catch (e) { pendingHL = null; return; }
+      Store.addHighlight(MISTAKE_SID, pendingHL.qid, pendingHL.text);
+      pendingHL = null;
+      document.getElementById('fw-hl-btn').classList.add('hidden');
+    }
+    document.addEventListener('mouseup', (e) => {
+      if (e.target.closest && e.target.closest('#fw-hl-btn')) return;
+      if (document.getElementById('view-mistakes') &&
+          !document.getElementById('view-mistakes').classList.contains('hidden')) {
+        mistakeSelectionHandler();
+      } else {
+        const btn = document.getElementById('fw-hl-btn');
+        if (btn) btn.classList.add('hidden');
+      }
+    });
+
+    function saveMistakeReflection(qid, val) {
+      Store.saveNote(qid, val.trim());
+    }
+
     function renderMistakesView() {
       const container = document.getElementById('mistakes-list-container');
       container.innerHTML = '';
@@ -4581,6 +4671,13 @@ ${lines || "（暂无考点数据）"}`;
         if (m.mastered) return false;
         if (currentMistakeCatFilter !== 'all' && m.cat !== currentMistakeCatFilter) return false;
         return true;
+      }).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+      // 同步视图切换按钮态
+      document.querySelectorAll('.mv-btn').forEach(b => {
+        const on = b.dataset.v === mistakeViewMode;
+        b.className = "mv-btn px-3 py-1 rounded-full text-xs font-semibold " +
+          (on ? "bg-[#144e4b] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200");
       });
 
       if (!list.length) {
@@ -4589,41 +4686,91 @@ ${lines || "（暂无考点数据）"}`;
             <i class="fa-regular fa-face-smile text-3xl text-emerald-600"></i>
             <div class="font-bold text-slate-700">当前分类暂无未攻克的错题</div>
             <div class="text-xs">做错的题目会自动归入对应的单项分类，并在攻克后自动毕业。</div>
-          </div>
-        `;
+          </div>`;
         return;
       }
 
+      const CN = { vocab: "词汇", reading: "阅读", grammar: "语法", math: "数学", custom: "个人" };
+      // 分组
+      const groups = {};
       list.forEach(m => {
-        const q = BYID[m.qid];
-        if (!q) return;
-        const cat = CATEGORY_MAP[q.cat] || { title: "其它" };
-
-        const card = document.createElement('div');
-        card.className = "bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3";
-        card.innerHTML = `
-          <div class="flex items-center justify-between pb-2.5 border-b border-slate-100 text-xs">
-            <div class="flex items-center space-x-2">
-              <span class="font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-mono">#${q.id}</span>
-              <span class="font-bold text-slate-800">${cat.title} · ${q.sk}</span>
-              <span class="text-slate-400 font-semibold">${q.df === 'E' ? 'Easy' : (q.df === 'H' ? 'Hard' : 'Medium')}</span>
-            </div>
-            <button onclick="redoSingleMistake('${q.id}')" class="px-3 py-1 bg-[#144e4b] text-white text-xs font-semibold rounded hover:bg-[#0e3b38]">
-              重做此题
-            </button>
-          </div>
-          <div class="text-xs text-slate-700 leading-relaxed font-serif">${q.ste}</div>
-          <div class="p-2.5 bg-slate-50 rounded text-xs flex justify-between text-slate-600">
-            <span>你的错选: <strong class="text-rose-600 font-mono">${m.wrong}</strong></span>
-            <span>正确答案: <strong class="text-emerald-700 font-mono">${q.an.join(', ')}</strong></span>
-          </div>
-          <details class="text-xs text-slate-500 pt-1">
-            <summary class="font-semibold text-slate-700 cursor-pointer hover:text-[#144e4b]">查看官方详细解析 (Rationale)</summary>
-            <div class="mt-2 p-3 bg-emerald-50/50 border border-emerald-100 rounded leading-relaxed text-slate-700">${q.ra || '暂无官方详细解析'}</div>
-          </details>
-        `;
-        container.appendChild(card);
+        let key, sub = "";
+        if (mistakeViewMode === 'session') {
+          key = m.src || ("更早的错题 · " + new Date(m.ts || Date.now()).toLocaleDateString());
+        } else if (mistakeViewMode === 'skill') {
+          key = (CN[m.cat] || m.cat) + " · " + (m.sk || "未归类");
+        } else {
+          key = "全部错题";
+        }
+        (groups[key] = groups[key] || []).push(m);
       });
+      const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+
+      container.innerHTML = entries.map(([gkey, items]) => `
+        <div class="mb-6">
+          <div class="flex items-center gap-2 mb-2.5">
+            <h3 class="text-sm font-extrabold text-slate-900"><i class="fa-solid fa-folder text-slate-300 mr-1.5"></i>${esc(gkey)}</h3>
+            <span class="text-[11px] text-slate-400">${items.length} 题</span>
+          </div>
+          <div class="space-y-3">${items.map(m => mistakeCardHTML(m)).join("")}</div>
+        </div>`).join("");
+
+      // 恢复高亮
+      container.querySelectorAll('.mistake-detail').forEach(el => {
+        wrapMarksIn(el, Store.highlightsFor(MISTAKE_SID, el.dataset.qid));
+      });
+    }
+
+    function mistakeCardHTML(m) {
+      const q = BYID[m.qid];
+      if (!q) return "";
+      const cat = CATEGORY_MAP[q.cat] || { title: "其它" };
+      const qidAttr = q.id.replace(/[^A-Za-z0-9-]/g, "_");
+      const note = Store.note(m.qid);
+      const optsHtml = (q.op || []).map((o, i) => {
+        const L = "ABCD"[i];
+        const isWrong = m.wrong === L;
+        const isRight = (q.an || []).includes(L);
+        const cls = isWrong ? "border-rose-300 bg-rose-50" :
+                    isRight ? "border-emerald-300 bg-emerald-50" : "border-slate-200";
+        return `<div class="px-3 py-2 rounded-lg border ${cls} text-xs flex items-start gap-2">
+          <b class="font-mono shrink-0">${L}</b>
+          <span class="flex-1">${o || "（填空题）"}</span>
+          ${isRight ? '<span class="text-emerald-600 font-bold shrink-0">✓ 正确答案</span>' : ""}
+          ${isWrong ? '<span class="text-rose-600 font-bold shrink-0">✗ 你的错选</span>' : ""}
+        </div>`;
+      }).join("");
+      const sprRow = q.ty === "spr" ? `
+        <div class="p-2.5 bg-slate-50 rounded text-xs flex justify-between text-slate-600 mb-2">
+          <span>你的作答: <strong class="${m.wrong && m.wrong !== "未作答" ? "text-rose-600" : "text-slate-400"} font-mono">${esc(m.wrong)}</strong></span>
+          <span>标准答案: <strong class="text-emerald-700 font-mono">${esc(q.an.join(" / "))}</strong></span>
+        </div>` : "";
+      return `
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2.5">
+        <div class="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
+          <div class="flex items-center space-x-2 flex-wrap gap-1">
+            <span class="font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-mono">${q.id}</span>
+            <span class="font-bold text-slate-800">${cat.title} · ${q.sk || ""}</span>
+            <span class="text-slate-400 font-semibold">${q.df === 'E' ? 'Easy' : (q.df === 'H' ? 'Hard' : 'Medium')}</span>
+          </div>
+          <button onclick="redoSingleMistake('${q.id}')" class="px-3 py-1 bg-[#144e4b] text-white text-xs font-semibold rounded hover:bg-[#0e3b38]">重做此题</button>
+        </div>
+        <div class="mistake-detail space-y-2" data-qid="${esc(q.id)}">
+          ${q.sti ? `<div class="text-xs text-slate-700 leading-relaxed font-serif border-l-2 border-slate-200 pl-3 max-h-60 overflow-y-auto">${q.sti}</div>` : ""}
+          <div class="text-xs text-slate-800 leading-relaxed font-semibold">${q.ste}</div>
+          ${optsHtml}
+          ${sprRow}
+          <details class="text-xs text-slate-500">
+            <summary class="font-semibold text-slate-700 cursor-pointer hover:text-[#144e4b]">查看解析</summary>
+            <div class="mt-2 p-3 bg-emerald-50/50 border border-emerald-100 rounded leading-relaxed text-slate-700">${q.ra || "暂无解析"}</div>
+          </details>
+          <div class="pt-1">
+            <textarea placeholder="reflection：这题为什么错？下次怎么防？（自动保存）"
+              class="w-full border border-slate-200 rounded-lg p-2 text-xs leading-relaxed focus:border-[#144e4b] focus:outline-hidden"
+              rows="2" oninput="saveMistakeReflection('${q.id}', this.value)">${esc(note ? note.text : "")}</textarea>
+          </div>
+        </div>
+      </div>`;
     }
 
     function redoSingleMistake(qid) {
