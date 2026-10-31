@@ -159,6 +159,9 @@
           </div>
         </div>
 
+      <!-- 考试日期与倒计时 + 当前估算水平 -->
+      <div id="exam-bar" class="mt-4"></div>
+
       <!-- 严格按照用户截图实现的 5 大专项分类条 (Top 5 Cards Strip) -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-6">
         
@@ -1423,6 +1426,7 @@
         freewriteSum: PREFIX + "freewrite_sum", // 最近一次AI笔记总结
         aiChat: PREFIX + "ai_chat",           // AI快捷对话历史（最近40条）
         placementDone: PREFIX + "placement_done", // 摸底测试完成标记 {ts, total}
+        lastEstimate: PREFIX + "last_estimate",   // 最近一次完整模考/摸底估算 {ts, rw, math, total}
       };
 
       let warned = false;
@@ -1463,6 +1467,8 @@
         saveCoachPlan(p)   { return put(K.coachPlan, p); },
         coachReport()      { return raw(K.coachReport, null); },
         saveCoachReport(r) { return put(K.coachReport, r); },
+        lastEstimate()     { return raw(K.lastEstimate, null); },
+        saveLastEstimate(e){ return put(K.lastEstimate, e); },
         freewrite()        { return raw(K.freewrite, []); },
         saveFreewrite(list){ return put(K.freewrite, list); },
         freewriteSum()     { return raw(K.freewriteSum, null); },
@@ -3046,6 +3052,20 @@ ${lines || "（暂无考点数据）"}`;
       else renderAiChat();
       document.getElementById("aic-input").focus();
     }
+    function openAiChatForMistakeSet(gkey) {
+      var items = Object.values(mistakes || {}).filter(function(m){
+        return m.src === gkey && !m.mastered;
+      }).slice(0, 8);
+      if (!items.length) return alert("该场次暂无错题数据。");
+      var blocks = items.map(function(m, i){
+        var q = BYID[m.qid];
+        if (!q) return "";
+        return "【第" + (i + 1) + "题 · " + (q.sk || "") + "】错选 " + m.wrong + "（正确 " + m.correct + "）\n题干: " + stripTags(q.ste).slice(0, 160);
+      }).filter(Boolean).join("\n\n");
+      openAiChatWith({ kind: "session-set", label: gkey.slice(0, 22),
+        block: "这是同一次练习里的全部错题（共" + items.length + "道）：\n\n" + blocks + "\n\n请基于整套错题的共性给我分析。不要逐题重复题干。" });
+    }
+
     function openAiChatForQuestion(qid) {
       const q = BYID[qid];
       if (!q) return;
@@ -3112,6 +3132,31 @@ ${lines || "（暂无考点数据）"}`;
       }
       aiBusy = false;
       renderAiChat();
+    }
+
+    /* ===== 主页考试信息条：考试日期（官方列表/自定义）+ 倒计时 + 当前估算水平 ===== */
+    var OFFICIAL_EXAM_DATES = ["2026-11-07", "2026-12-05", "2027-03-13", "2027-05-01", "2027-06-05"];
+
+    function renderExamBar() {
+      var box = document.getElementById("exam-bar");
+      if (!box) return;
+      var prefs = coachPrefs();
+      var exam = prefs.examDate || "";
+      var days = exam ? Math.ceil((new Date(exam) - Date.now()) / 86400000) : null;
+      var est = Store.lastEstimate();
+      var dateCtrl = '<select id="exam-date-pick" onchange="(function(){ var v = this.value; var p = coachPrefs(); p.examDate = v; Store.saveCoachPrefs(p); renderExamBar(); })()" class="px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white">' +
+        '<option value="">选择考试日…</option>' +
+        OFFICIAL_EXAM_DATES.map(function(d2){ return '<option value="' + d2 + '"' + (exam === d2 ? " selected" : "") + '>官方 ' + d2 + '</option>'; }).join("") +
+        '</select> 或 <input type="date" id="exam-date-custom" value="' + esc(exam) + '" onchange="(function(el){ var p = coachPrefs(); p.examDate = el.value; Store.saveCoachPrefs(p); renderExamBar(); })(this)" class="px-2 py-1.5 border border-slate-300 rounded-lg text-xs">';
+      var level = est && est.total
+        ? '当前水平: <b class="text-slate-900">估算总分约 ' + est.total + '</b> <span class="text-slate-400">（' + (est.source || "模考") + ' · ' + new Date(est.ts).toLocaleDateString() + '）</span>'
+        : '当前水平: <span class="text-slate-400">尚未参加完整模考——去「全真模考」测一套即得估算分</span>';
+      box.innerHTML = '<div class="bg-white border border-slate-200 rounded-xl p-3.5 text-xs flex items-center gap-3 flex-wrap">' +
+        '<i class="fa-solid fa-hourglass-half text-[#144e4b]"></i>' + dateCtrl +
+        '<span class="text-slate-300">|</span>' +
+        (days !== null && isFinite(days) ? '<span>倒计时 <b class="text-lg font-extrabold ' + (days <= 14 ? "text-rose-600" : "text-slate-900") + '">' + Math.max(0, days) + '</b> 天</span>' : '<span class="text-slate-400">倒计时未设</span>') +
+        '<span class="text-slate-300">|</span><span>' + level + '</span>' +
+        '</div>';
     }
 
     /* ===== 20分钟水平摸底（16题抽样：8阅读语法+8数学） =====
@@ -3186,6 +3231,7 @@ ${lines || "（暂无考点数据）"}`;
 
       // 视图特定渲染
       if (viewName === "coach" && typeof renderCoach === "function") renderCoach();
+      if (viewName === "dashboard" && typeof renderExamBar === "function") renderExamBar();
       if (viewName === "mistakes" && typeof renderMistakesView === "function") renderMistakesView();
       if (viewName === "vocab" && typeof renderVocabView === "function") renderVocabView();
       if (viewName === "dashboard" && typeof renderCategoryDetail === "function") renderCategoryDetail(selectedCat);
@@ -3812,6 +3858,9 @@ ${lines || "（暂无考点数据）"}`;
       if (sec1.length === 54) est.rw = estimateSectionScore(1, sec1.filter(x => x.ok).length, 54);
       if (sec2.length === 44) est.math = estimateSectionScore(2, sec2.filter(x => x.ok).length, 44);
       if (est.rw && est.math) est.total = Math.round((est.rw + est.math) / 20) * 10;
+      if (est.rw || est.math || est.total) {
+        Store.saveLastEstimate({ ts: d.ts || Date.now(), rw: est.rw || null, math: est.math || null, total: est.total || null, source: d.label });
+      }
       const estHtml = (est.rw || est.math) ? `
         <div class="mt-3 p-3 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-900">
           <b>估算分（按公开换算锚点插值，<u>非官方换算</u>）：</b>
@@ -3824,6 +3873,7 @@ ${lines || "（暂无考点数据）"}`;
         const r1 = estimateSectionScore(1, sec1.filter(x => x.ok).length, sec1.length);
         const r2 = estimateSectionScore(2, sec2.filter(x => x.ok).length, sec2.length);
         const tot = Math.round((r1 + r2) / 20) * 10;
+        Store.saveLastEstimate({ ts: d.ts || Date.now(), rw: r1, math: r2, total: tot, source: "水平摸底" });
         placementHtml = `
         <div class="mt-3 p-3 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-900">
           <b>摸底粗略估算（样本仅${sec1.length + sec2.length}题，误差较大）：</b>
@@ -5074,9 +5124,11 @@ ${lines || "（暂无考点数据）"}`;
 
       container.innerHTML = entries.map(([gkey, items]) => `
         <div class="mb-6">
-          <div class="flex items-center gap-2 mb-2.5">
+          <div class="flex items-center gap-2 mb-2.5 flex-wrap">
             <h3 class="text-sm font-extrabold text-slate-900"><i class="fa-solid fa-folder text-slate-300 mr-1.5"></i>${esc(gkey)}</h3>
             <span class="text-[11px] text-slate-400">${items.length} 题</span>
+            <button onclick="openAiChatForMistakeSet('${esc(gkey).replace(/'/g, "")}')" class="px-2.5 py-1 border border-violet-300 bg-violet-50 text-violet-700 rounded-lg text-[11px] font-bold hover:bg-violet-100">
+              <i class="fa-solid fa-robot mr-1"></i>问AI（整套题上下文）</button>
           </div>
           <div class="space-y-3">${items.map(m => mistakeCardHTML(m)).join("")}</div>
         </div>`).join("");
@@ -5872,6 +5924,7 @@ ${questionText}
     window.addEventListener('DOMContentLoaded', () => {
       initBank();
       loadFullBank();
+      renderExamBar();                                      // 主页考试信息条（日期可空）
       const fab = document.getElementById('fab-note');      // 首屏直接可见随手记入口
       if (fab) fab.classList.remove('hidden');
 
