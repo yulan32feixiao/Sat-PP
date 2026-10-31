@@ -820,6 +820,32 @@
     <i class="fa-solid fa-highlighter mr-1" style="color:#fef08a"></i>高亮
   </button>
 
+  <!-- ================= AI快捷对话窗（上下文感知，Ctrl+/ 唤起） ================= -->
+  <button id="fab-aichat" onclick="toggleAiChat()" title="AI对话 (Ctrl+/)"
+    class="hidden fixed bottom-20 right-5 z-40 w-12 h-12 rounded-full bg-violet-600 text-white shadow-lg hover:bg-violet-700 hover:scale-105 transition flex items-center justify-center">
+    <i class="fa-solid fa-robot text-lg"></i>
+  </button>
+  <div id="drawer-aichat" class="hidden fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] bg-white shadow-2xl flex flex-col border-l border-slate-200">
+    <div class="px-4 py-3 bg-[#144e4b] flex items-center justify-between">
+      <h3 class="font-bold text-white text-sm"><i class="fa-solid fa-robot mr-1.5"></i>AI 对话
+        <span id="aic-ctx" class="ml-2 text-[10px] bg-white/15 px-2 py-0.5 rounded"></span></h3>
+      <div class="flex items-center gap-2">
+        <button onclick="clearAiChat()" title="清空对话" class="text-white/70 hover:text-white text-xs"><i class="fa-solid fa-broom"></i></button>
+        <button onclick="toggleAiChat()" class="text-white/70 hover:text-white text-lg">&times;</button>
+      </div>
+    </div>
+    <div id="aic-messages" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+    <div class="p-3 bg-white border-t border-slate-200">
+      <div class="flex gap-2">
+        <input id="aic-input" placeholder="问任何备考问题…（Enter 发送）"
+          class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-[#144e4b] focus:outline-hidden"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();sendAiChat();}">
+        <button onclick="sendAiChat()" class="px-4 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-xs font-bold transition">发送</button>
+      </div>
+      <p class="text-[10px] text-slate-400 mt-1.5">回答结合你的真实数据与当前上下文；数据里没有的它不会编。</p>
+    </div>
+  </div>
+
   <!-- ================= 随手记（备忘录式侧边栏，任何页面随时记） ================= -->
   <button id="fab-note" onclick="toggleFreeDrawer()" title="随手记"
     class="hidden fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-[#144e4b] text-white shadow-lg hover:bg-[#0e3b38] hover:scale-105 transition flex items-center justify-center">
@@ -1384,6 +1410,7 @@
         freewrite:  PREFIX + "freewrite",     // [{id, ts, text, tags:[], summarized}]
         drillSources: PREFIX + "drill_sources", // ["bank","mock","y25","mine"] 的勾选组合
         freewriteSum: PREFIX + "freewrite_sum", // 最近一次AI笔记总结
+        aiChat: PREFIX + "ai_chat",           // AI快捷对话历史（最近40条）
       };
 
       let warned = false;
@@ -1428,6 +1455,8 @@
         saveFreewrite(list){ return put(K.freewrite, list); },
         freewriteSum()     { return raw(K.freewriteSum, null); },
         saveFreewriteSum(s){ return put(K.freewriteSum, s); },
+        aiChat()           { return raw(K.aiChat, []); },
+        saveAiChat(h)      { return put(K.aiChat, h.slice(-40)); },
         drillSources()     { return raw(K.drillSources, null) || ["mock"]; },
         saveDrillSources(a){ return put(K.drillSources, a); },
         clearSession()     { try { localStorage.removeItem(K.session); } catch (e) {} },
@@ -2889,6 +2918,95 @@ ${lines || "（暂无考点数据）"}`;
       }
     }
 
+    /* ===== AI快捷对话窗（上下文感知：错题/场次/教练数据 随开随带） ===== */
+    let aiCtx = null;          // {kind:'question'|'session'|'coach', label, block}
+    let aiBusy = false;
+
+    function toggleAiChat() {
+      const drawer = document.getElementById("drawer-aichat");
+      const opening = drawer.classList.contains("hidden");
+      drawer.classList.toggle("hidden", !opening);
+      if (opening) { renderAiChat(); document.getElementById("aic-input").focus(); }
+    }
+    function clearAiChat() {
+      Store.saveAiChat([]);
+      renderAiChat();
+    }
+    function openAiChatWith(ctx) {
+      aiCtx = ctx;
+      const el = document.getElementById("drawer-aichat");
+      if (el.classList.contains("hidden")) toggleAiChat();
+      else renderAiChat();
+      document.getElementById("aic-input").focus();
+    }
+    function openAiChatForQuestion(qid) {
+      const q = BYID[qid];
+      if (!q) return;
+      const m = mistakes[qid] || {};
+      const block = serializeQuestion(q, { picked: m.wrong && m.wrong !== "未作答" ? m.wrong : null,
+                                           ms: null, why: m.why }, {});
+      openAiChatWith({ kind: "question", label: "错题 " + qid,
+                       block: "我正在看这道做错的题：\n\n" + block });
+    }
+    function openAiChatForLastSession() {
+      if (!debriefData) return;
+      const per = {};
+      debriefData.items.filter(x => x.answered).forEach(x => {
+        const c = x.q.cat || "other";
+        per[c] = per[c] || { n: 0, ok: 0 };
+        per[c].n++; if (x.ok) per[c].ok++;
+      });
+      const lines = Object.entries(per).map(([c, v]) => `- ${c}: ${v.ok}/${v.n} 对`).join("\n");
+      openAiChatWith({ kind: "session", label: "本场练习复盘",
+                       block: `我刚做完一组题（${debriefData.label}）：\n${lines}\n整体正确率 ${debriefData.ok}/${debriefData.items.filter(x=>x.answered).length}。` });
+    }
+
+    function renderAiChat() {
+      const ctxEl = document.getElementById("aic-ctx");
+      ctxEl.textContent = aiCtx ? "上下文: " + aiCtx.label : "无特定上下文";
+      const box = document.getElementById("aic-messages");
+      const hist = Store.aiChat();
+      if (!hist.length && !aiBusy) {
+        box.innerHTML = '<p class="text-xs text-slate-400 text-center pt-8">问吧 —— 比如这道题为什么选C、语法该怎么补、我的计划合不合理。</p>';
+        return;
+      }
+      box.innerHTML = hist.map(m => `
+        <div class="${m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}">
+          <div class="${m.role === 'user' ? 'bg-[#144e4b] text-white' : 'bg-slate-100 text-slate-800'} max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">${esc(m.text || m.content || "")}</div>
+        </div>`).join("") +
+        (aiBusy ? '<div class="flex justify-start"><div class="bg-slate-100 rounded-2xl px-3.5 py-2 text-xs text-slate-400"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>思考中…</div></div>' : "");
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function sendAiChat() {
+      if (aiBusy) return;
+      const input = document.getElementById("aic-input");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      const hist = Store.aiChat();
+      hist.push({ role: "user", text });
+      Store.saveAiChat(hist);
+      aiBusy = true;
+      renderAiChat();
+      try {
+        const ctxLine = aiCtx ? `\n\n[当前上下文]\n${aiCtx.block}` : "";
+        const aggLine = coachAggregate(attempts, mistakes);
+        const reply = await callDeepSeek(
+          hist.slice(-12).map(m => ({ role: m.role, content: m.text })) ,
+          { system: "你是 Digital SAT 自学教练，中文回答，简洁分点。" +
+            "学生数据：做题" + aggLine.totals.n + "题 正确率" + aggLine.totals.acc + "%。" + ctxLine,
+            maxTokens: 1200, temperature: 0.5 });
+        hist.push({ role: "assistant", text: reply });
+        Store.saveAiChat(hist);
+      } catch (e) {
+        hist.push({ role: "assistant", text: "（调用失败: " + e.message + "）" });
+        Store.saveAiChat(hist);
+      }
+      aiBusy = false;
+      renderAiChat();
+    }
+
     // ================= 视图路由导航 (VIEW ROUTER) =================
     function switchView(viewName) {
       document.querySelectorAll(".view-panel").forEach(el => el.classList.add("hidden"));
@@ -2915,6 +3033,8 @@ ${lines || "（暂无考点数据）"}`;
       const fab = document.getElementById("fab-note");
       if (fab) fab.classList.toggle("hidden",
         !["dashboard", "coach", "mock", "review26", "mistakes", "vocab", "report"].includes(viewName));
+      const fabAi = document.getElementById("fab-aichat");
+      if (fabAi) fabAi.classList.toggle("hidden", viewName === "runner");
 
       // 视图特定渲染
       if (viewName === "coach" && typeof renderCoach === "function") renderCoach();
@@ -3239,6 +3359,11 @@ ${lines || "（暂无考点数据）"}`;
     });
 
     document.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "/") {
+        e.preventDefault();
+        toggleAiChat();
+        return;
+      }
       if (e.key !== "Escape") return;
       // 随手记抽屉先关（它在最上层）
       const drawer = document.getElementById("drawer-note");
@@ -3518,6 +3643,7 @@ ${lines || "（暂无考点数据）"}`;
           <button onclick="closeDebrief()" class="px-5 py-2.5 bg-[#144e4b] hover:bg-[#0e3b38] text-white rounded-lg text-sm font-semibold">完成复盘</button>
           <button onclick="switchView('mistakes'); closeDebrief();" class="px-5 py-2.5 border border-slate-300 hover:bg-white rounded-lg text-sm font-semibold">去错题本</button>
           <button onclick="closeDebrief(); launchTargetedDrill();" class="px-5 py-2.5 border border-slate-300 hover:bg-white rounded-lg text-sm font-semibold">再来一组</button>
+          <button onclick="openAiChatForLastSession()" class="px-5 py-2.5 border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 rounded-lg text-sm font-semibold">AI追问本场</button>
         </div>`;
       mathRender(box);   // 复盘里的题目/解析公式同样规范排版
     }
@@ -4753,7 +4879,10 @@ ${lines || "（暂无考点数据）"}`;
             <span class="font-bold text-slate-800">${cat.title} · ${q.sk || ""}</span>
             <span class="text-slate-400 font-semibold">${q.df === 'E' ? 'Easy' : (q.df === 'H' ? 'Hard' : 'Medium')}</span>
           </div>
-          <button onclick="redoSingleMistake('${q.id}')" class="px-3 py-1 bg-[#144e4b] text-white text-xs font-semibold rounded hover:bg-[#0e3b38]">重做此题</button>
+          <div class="flex gap-1.5">
+            <button onclick="openAiChatForQuestion('${q.id}')" class="px-3 py-1 border border-violet-300 bg-violet-50 text-violet-700 text-xs font-semibold rounded hover:bg-violet-100">问AI</button>
+            <button onclick="redoSingleMistake('${q.id}')" class="px-3 py-1 bg-[#144e4b] text-white text-xs font-semibold rounded hover:bg-[#0e3b38]">重做此题</button>
+          </div>
         </div>
         <div class="mistake-detail space-y-2" data-qid="${esc(q.id)}">
           ${q.sti ? `<div class="text-xs text-slate-700 leading-relaxed font-serif border-l-2 border-slate-200 pl-3 max-h-60 overflow-y-auto">${q.sti}</div>` : ""}
