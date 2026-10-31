@@ -139,7 +139,7 @@
             <h1 class="text-2xl font-bold text-slate-900 tracking-tight">SAT 专项练习与针对性提升</h1>
             <p class="text-xs sm:text-sm text-slate-500 mt-1">按五大核心维度分类，点击任意单项可展开二级考点，支持自定义题量与配速。</p>
           </div>
-          <!-- 题库来源：官方公开题库 / 2026 考后真题（后者考点为自动推断） -->
+          <!-- 题库来源：官方公开题库 / 2026 考后真题 / 我的题库（截图转录） -->
           <div class="flex items-center gap-2">
             <span class="text-[11px] font-bold text-slate-400">题库来源</span>
             <div class="flex rounded-lg overflow-hidden border border-slate-300">
@@ -147,6 +147,8 @@
                       class="px-3 py-1.5 text-xs font-bold transition bg-[#144e4b] text-white">官方题库</button>
               <button id="src-mock" onclick="setDrillSource('mock')"
                       class="px-3 py-1.5 text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-50 border-l border-slate-300">2026真题</button>
+              <button id="src-mine" onclick="setDrillSource('mine')"
+                      class="px-3 py-1.5 text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-50 border-l border-slate-300">我的题库</button>
             </div>
           </div>
         </div>
@@ -1378,11 +1380,15 @@
     }
 
     /* 各专项进度条 = 该专项的真实正确率。没做过就是 0，不编数字。
-       2026真题模式下只统计 m26. 前缀的作答，和官方题库的记录分开。 */
+       2026真题/我的题库模式下只统计对应前缀的作答，和官方题库的记录分开。 */
     function updateCategoryProgress() {
       const acc = {};
-      const srcAtt = (attempts || []).filter(a =>
-        drillSource === 'mock' ? String(a && a.qid || '').startsWith('m26.') : true);
+      const srcAtt = (attempts || []).filter(a => {
+        const id = String(a && a.qid || "");
+        if (drillSource === 'mock') return id.startsWith("m26.");
+        if (drillSource === 'mine') return id.startsWith("my.");
+        return true;
+      });
       srcAtt.forEach(a => {
         if (!a || !a.cat) return;
         const t = acc[a.cat] = acc[a.cat] || { n: 0, ok: 0 };
@@ -1410,9 +1416,12 @@
         counts[cat] = (counts[cat] || 0) + 1;
       });
 
-      // 2026 真题只注册进 BYID（错题本/生词/AI 用），不进专项练习池
+      // 2026 真题 / 我的题库只注册进 BYID（错题本/生词/AI 用），不进专项练习池
       if (typeof MOCK !== "undefined" && MOCK && MOCK.questions) {
         MOCK.questions.forEach(q => { BYID[q.id] = q; });
+      }
+      if (typeof MYBANK !== "undefined" && MYBANK && MYBANK.questions) {
+        MYBANK.questions.forEach(q => { BYID[q.id] = q; });
       }
 
       counts.custom = Object.values(mistakes).filter(m => !m.mastered).length;
@@ -1465,6 +1474,7 @@
                      full.length.toLocaleString() + " 题 (官方原题库)");
         initBank();
         loadMock2026();   // 2026 真题包：异步加载，失败不阻塞官方题库
+        loadMyBank();     // 我的题库（截图转录）：同上
         if (typeof refreshBackupNag === "function") refreshBackupNag();
         // 账号：有历史会话就恢复，magic link 回跳则在这里被接住
         Auth.init().then(async () => {
@@ -1837,24 +1847,33 @@
       document.getElementById('category-detail-panel').classList.add('hidden');
     }
 
-    // ================= 专项练习的题库来源（官方 / 2026真题） =================
+    // ================= 专项练习的题库来源（官方 / 2026真题 / 我的题库） =================
     let drillSource = 'bank';
     function drillPool() {
-      return (drillSource === 'mock' && MOCK && MOCK.questions) ? MOCK.questions : BANK;
+      if (drillSource === 'mock' && MOCK && MOCK.questions) return MOCK.questions;
+      if (drillSource === 'mine' && typeof MYBANK !== "undefined" && MYBANK && MYBANK.questions)
+        return MYBANK.questions;
+      return BANK;
     }
+    const SRC_BTN = {
+      bank:  { id: "src-bank", active: "bg-[#144e4b] text-white" },
+      mock:  { id: "src-mock", active: "bg-[#144e4b] text-white" },
+      mine:  { id: "src-mine", active: "bg-[#144e4b] text-white" },
+    };
     function setDrillSource(s) {
-      if (s === 'mock' && (!MOCK || !MOCK.questions)) {
+      if (s === 'mock' && (!MOCK || !MOCK.questions))
         return alert("2026真题包还没载入好，稍等几秒再切。");
-      }
+      if (s === 'mine' && (!MYBANK || !MYBANK.questions))
+        return alert("我的题库还没载入好，稍等几秒再切。");
       drillSource = s;
-      const bank = document.getElementById('src-bank');
-      const mock = document.getElementById('src-mock');
-      if (bank && mock) {
-        bank.className = "px-3 py-1.5 text-xs font-bold transition " +
-          (s === 'bank' ? "bg-[#144e4b] text-white" : "bg-white text-slate-600 hover:bg-slate-50 border-l-0");
-        mock.className = "px-3 py-1.5 text-xs font-bold transition border-l border-slate-300 " +
-          (s === 'mock' ? "bg-[#144e4b] text-white" : "bg-white text-slate-600 hover:bg-slate-50");
-      }
+      Object.entries(SRC_BTN).forEach(([key, cfg]) => {
+        const b = document.getElementById(cfg.id);
+        if (!b) return;
+        const idle = "px-3 py-1.5 text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-50" +
+                     (key === "bank" ? "" : " border-l border-slate-300");
+        b.className = "px-3 py-1.5 text-xs font-bold transition " +
+                      (s === key ? cfg.active : idle);
+      });
       renderCatCounts();
       updateCategoryProgress();
       if (typeof renderCategoryDetail === "function") renderCategoryDetail(selectedCat);
@@ -1871,18 +1890,20 @@
 
     function renderCategoryDetail(catKey) {
       const cat = CATEGORY_MAP[catKey];
-      const isMock = (drillSource === 'mock' && catKey !== 'custom');
-      document.getElementById('detail-panel-title').innerText = isMock
-        ? `${cat.code} ${cat.title} · 2026真题（考点为自动推断，非官方标注）`
+      const alt = drillSource !== 'bank' && catKey !== 'custom';
+      const pool = drillPool();
+      const altLabel = drillSource === 'mock' ? "2026真题（考点为自动推断，非官方标注）"
+                                             : "我的题库（截图OCR转录，考点为自动推断）";
+      document.getElementById('detail-panel-title').innerText = alt
+        ? `${cat.code} ${cat.title} · ${altLabel}`
         : `${cat.code} ${cat.title} · College Board 官方二级考点技能细分`;
       document.getElementById('current-chosen-label').innerText = `${cat.code} ${cat.title} (全部考点)`;
 
       const grid = document.getElementById('skills-detail-grid');
       grid.innerHTML = '';
-      const pool = drillPool();
 
-      // 2026真题没有官方技能标注：按导入时自动推断的 sk 汇总，按题量排
-      const skillList = isMock
+      // 2026/我的题库没有官方技能标注：按导入时自动推断的 sk 汇总，按题量排
+      const skillList = alt
         ? Object.entries(pool.filter(q => q.cat === catKey && q.sk)
                    .reduce((m, q) => (m[q.sk] = (m[q.sk] || 0) + 1, m), {}))
             .sort((a, b) => b[1] - a[1]).map(e => e[0])
@@ -1891,9 +1912,10 @@
       skillList.forEach(skName => {
         const card = document.createElement('div');
         const qCount = pool.filter(q => q.cat === catKey &&
-          (isMock ? q.sk === skName : (skName.includes("错题") ? true : q.sk === skName))).length;
+          (alt ? q.sk === skName : (skName.includes("错题") ? true : q.sk === skName))).length;
         const srcAtt = (attempts || []).filter(a =>
-          drillSource === 'mock' ? String(a.qid || '').startsWith('m26.') : true);
+          drillSource === 'mock' ? String(a.qid || '').startsWith('m26.')
+            : drillSource === 'mine' ? String(a.qid || '').startsWith('my.') : true);
         const skAttempts = srcAtt.filter(a => a.sk === skName);
         const skAcc = skAttempts.length ? Math.round((skAttempts.filter(a=>a.ok).length / skAttempts.length) * 100) : 75;
 
@@ -1961,8 +1983,8 @@
       pool = pool.filter(q => (e && q.df==='E') || (m && q.df==='M') || (h && q.df==='H'));
 
       if (!pool.length) {
-        return alert(drillSource === 'mock'
-          ? "当前筛选条件下无题目。2026真题没有 Easy 档（难度按模块推断：M1=Medium、M2=Hard），请把 Medium/Hard 勾上。"
+        return alert(drillSource !== 'bank'
+          ? "当前筛选条件下无题目。2026真题/我的题库没有 Easy 档（难度按模块或默认 Medium），请把 Medium/Hard 勾上。"
           : "当前筛选条件下无题目！请放宽难度或选择其他分类。");
       }
 
@@ -1978,11 +2000,13 @@
         limitSec = chosen.length * per;
       }
 
+      const srcSuffix = drillSource === 'mock' ? ' · 2026真题'
+                      : drillSource === 'mine' ? ' · 我的题库' : '';
       initRunnerSession({
-        title: `${CATEGORY_MAP[selectedCat].title} 专项强化${drillSource === 'mock' ? ' · 2026真题' : ''}`,
+        title: `${CATEGORY_MAP[selectedCat].title} 专项强化${srcSuffix}`,
         moduleTag: selectedSkill || "专项练习",
         isMock: false,
-        calcAllowed: drillSource === 'mock' ? selectedCat === 'math' : true,   // 2026题按官方规则：R&W无计算器；官方题库练习保持可用
+        calcAllowed: drillSource !== 'bank' ? selectedCat === 'math' : true,   // 2026/我的题库按官方规则：R&W无计算器；官方题库练习保持可用
         questions: chosen,
         timeLimitSec: limitSec,
         answers: chosen.map(() => ({ picked: null, struck: [], flagged: false })),
@@ -2025,6 +2049,20 @@
       if (viewName === "review26" && typeof renderMockReview === "function") renderMockReview();
 
       window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    /* ============ 我的题库（截图转录） ============ */
+    let MYBANK = null;
+    async function loadMyBank() {
+      try {
+        const r = await fetch("mybank.bin");
+        if (!r.ok) return;
+        const buf = await r.arrayBuffer();
+        const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+        MYBANK = JSON.parse(await new Response(stream).text());
+        MYBANK.questions.forEach(q => { BYID[q.id] = q; });
+        renderCatCounts();
+      } catch (e) { console.warn("[mybank] 加载失败：", e && e.message || e); }
     }
 
     /* ============ 水平评估 ============
