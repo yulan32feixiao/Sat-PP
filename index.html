@@ -1837,77 +1837,64 @@
     }
 
     function renderMockSets() {
-      const box = document.getElementById('mock2026-list');
+      var box = document.getElementById("mock2026-list");
       if (!box) return;
       if (!MOCK) return;   // 还没载入，状态字由 loadMock2026 维护
-      var allSets = (MOCK ? MOCK.sets : []).concat(M25 ? M25.sets : []);
+      var allSets = (MOCK ? MOCK.sets : []).concat(typeof M25 !== "undefined" && M25 ? M25.sets : []);
       var byYear = {};
-      var byMonth = {};
       allSets.forEach(function(s){
         var yr = String(s.setId).indexOf("2025") === 0 ? "2025" : "2026";
-        byYear[yr] = (byYear[yr] || 0) + 1;
-        var k = yr + "|" + s.month + "-" + s.nth;
-        byMonth[k] = (byMonth[k] || []).concat([s]);
+        (byYear[yr] = byYear[yr] || []).push(s);
       });
-      window.__mockByMonth = byMonth;
-      var keys = Object.keys(byMonth).sort(function(a, b){
-        var ya = a.split("|")[0], ra = a.split("|")[1];
-        var yb = b.split("|")[0], rb = b.split("|")[1];
-        var ma = +ra.split('-')[0], na = +ra.split('-')[1];
-        var mb = +rb.split('-')[0], nb = +rb.split('-')[1];
-        return (+yb) - (+ya) || mb - ma || na - nb;   // 年→月新的在前，套号升序
-      });
-      if (!window.__mockPickYear || !byYear[window.__mockPickYear]) {
-        window.__mockPickYear = keys.length ? keys[0].split("|")[0] : "2026";   // 默认最新年
-      }
-      var yearKeys = keys.filter(function(k){ return k.split("|")[0] === window.__mockPickYear; });
-      var yearName = window.__mockPickYear + "年";
+      window.__mockOpenYears = window.__mockOpenYears || {};
 
-      // 场次下拉：仅该年份；选中后渲染该场的分类卡
-      var sessionOptions = yearKeys.map(function(k, i){
-        var rest = k.split("|")[1];
-        var mo = +rest.split("-")[0], nth = +rest.split("-")[1];
-        var name = monthLabel(mo) + " · " + (nth === 99 ? "合并/去重卷" : "第" + nth + "套") + "（" + byMonth[k].length + "份卷）";
-        return '<option value="' + k + '"' + (i === 0 ? " selected" : "") + '>' + name + '</option>';
+      box.innerHTML = ["2026", "2025"].filter(function(yr){ return byYear[yr] && byYear[yr].length; }).map(function(yr){
+        var sets = byYear[yr];
+        var qTotal = sets.reduce(function(t, s){ return t + s.m1 + s.m2; }, 0);
+        var open = !!window.__mockOpenYears[yr];
+        var body = open ? mockYearBody(yr, sets) : "";
+        return `
+        <div class="bg-white border border-slate-200 rounded-xl mb-3 overflow-hidden">
+          <button onclick="toggleMockYear('${yr}')" class="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50 transition">
+            <span class="text-base font-extrabold text-slate-900"><i class="fa-solid fa-folder${open ? "-open" : ""} text-slate-300 mr-2"></i>${yr}年真题</span>
+            <span class="text-xs text-slate-400 font-semibold">${sets.length}套 · ${qTotal}题 <i class="fa-solid fa-chevron-${open ? "up" : "down"} ml-2"></i></span>
+          </button>
+          <div class="${open ? "" : "hidden"} px-4 pb-4 border-t border-slate-100">${body}</div>
+        </div>`;
       }).join("");
-
-      box.innerHTML = `
-        <div class="flex items-center gap-2 flex-wrap mb-4">
-          <span class="text-xs font-bold text-slate-400">选择年份与场次：</span>
-          <select id="mock-session-select" onchange="(function(){ window.__mockPickSession = this.value; renderMockSets(); })()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold bg-white">${sessionOptions}</select>
-          <details class="text-[11px]"><summary class="cursor-pointer text-slate-400 hover:text-slate-600 select-none">展开全部场次</summary></details>
-        </div>
-        <div id="mock-session-cards"></div>`;
-
-      // 默认选中年份内第一个场次
-      var pickKey = window.__mockPickSession && byMonth[window.__mockPickSession] ? window.__mockPickSession : (yearKeys[0] || null);
-      window.__mockPickSession = pickKey;
-      var sel = document.getElementById("mock-session-select");
-      if (sel && pickKey) sel.value = pickKey;
-      renderMockSessionCards(pickKey, byMonth, keys);
     }
 
-    function renderMockSessionCards(pickKey, byMonth, allKeys) {
-      var box = document.getElementById("mock-session-cards");
-      if (!box || !pickKey) return;
-      var sets = (byMonth[pickKey] || []).slice().sort(function(a, b){ return a.sec - b.sec; });
-      var rest = pickKey.split("|")[1];
-      var mo = +rest.split("-")[0], nth = +rest.split("-")[1];
-      var yr = pickKey.split("|")[0];
-      box.innerHTML = `
-        <div class="flex items-baseline gap-2 mb-2">
-          <h3 class="text-sm font-extrabold text-slate-900">${yr}年${monthLabel(mo)} · ${nth === 99 ? "合并/去重卷" : "第" + nth + "套"}</h3>
-          <span class="text-[11px] text-slate-400">${sets.length} 份卷</span>
-        </div>
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${sets.map(mockSetRow).join("")}</div>
-        <details class="mt-4 text-[11px]"><summary class="cursor-pointer text-slate-400 hover:text-slate-600 select-none">展开${yr}年全部场次</summary>
-          <div class="mt-2 space-y-4">${allKeys.filter(function(k){ return k.split("|")[0] === String(yr); }).map(function(k){
-            var r2 = k.split("|")[1];
-            var m2 = +r2.split("-")[0], n2 = +r2.split("-")[1];
-            var s2 = (byMonth[k] || []).slice().sort(function(a,b){ return a.sec - b.sec; });
-            return '<div><h4 class="text-xs font-bold text-slate-700 mb-1.5">' + yr + '年' + monthLabel(m2) + ' · ' + (n2 === 99 ? "合并/去重卷" : "第" + n2 + "套") + '</h4><div class="grid grid-cols-1 lg:grid-cols-2 gap-3">' + s2.map(mockSetRow).join("") + '</div></div>';
-          }).join("")}</div>
-        </details>`;
+    function toggleMockYear(yr) {
+      window.__mockOpenYears = window.__mockOpenYears || {};
+      window.__mockOpenYears[yr] = !window.__mockOpenYears[yr];
+      renderMockSets();
+    }
+
+    function mockYearBody(yr, sets) {
+      var byMonth = {};
+      sets.forEach(function(s){
+        var k = s.month + "-" + s.nth;
+        (byMonth[k] = byMonth[k] || []).push(s);
+      });
+      var keys = Object.keys(byMonth).sort(function(a, b){
+        var ma = +a.split("-")[0], na = +a.split("-")[1];
+        var mb = +b.split("-")[0], nb = +b.split("-")[1];
+        return mb - ma || na - nb;   // 月份大的（晚考）在前
+      });
+      return keys.map(function(k){
+        var mo = +k.split("-")[0], nth = +k.split("-")[1];
+        var s2 = byMonth[k].slice().sort(function(a, b){ return a.sec - b.sec; });
+        var latest = (yr === "2026" && mo === 10 && nth === 1);
+        return `
+        <div class="mb-4">
+          <div class="flex items-baseline gap-2 mb-2">
+            <h3 class="text-sm font-extrabold text-slate-900">${monthLabel(mo)} · ${nth === 99 ? "合并/去重卷" : "第" + nth + "套"}</h3>
+            ${latest ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-[#144e4b] text-white font-bold">最新</span>' : ''}
+            <span class="text-[11px] text-slate-400">${s2.length} 份卷</span>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${s2.map(mockSetRow).join("")}</div>
+        </div>`;
+      }).join("");
     }
 
     // ---- 开考与模块连考 ----
